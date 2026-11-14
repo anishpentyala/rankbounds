@@ -70,6 +70,16 @@ def _score(bits, total, k):
     }
 
 
+def _metric_scores(hits, first, ap, dcg, ideal, total, k):
+    return {
+        "precision": hits / k,
+        "recall": hits / total if total else 0.0,
+        "rr": 1 / first if first else 0.0,
+        "ap_total": ap / total if total else 0.0,
+        "ndcg": dcg / ideal if ideal else 0.0,
+    }
+
+
 def _query(ordered, judgments, universe_size, k, total, examples):
     top = ordered[:k]
     unknown = [i for i, doc in enumerate(top) if doc not in judgments]
@@ -77,33 +87,92 @@ def _query(ordered, judgments, universe_size, k, total, examples):
     known_rel = sum(judgments.values())
     unknown_all = universe_size - len(judgments)
     outside = unknown_all - len(unknown)
+    if total is not None and not known_rel <= total <= known_rel + unknown_all:
+        raise BoundsError("total relevant count contradicts judgments or universe")
+    # Prefix fixed positives and suffix fixed reciprocal-rank contributions.
+    prefix = [0]
+    for bit in known:
+        prefix.append(prefix[-1] + bit)
+    suffix = [0.0] * (len(top) + 1)
+
+    # Compensated accumulation avoids quadratic re-summing of growing lists.
+    def accumulator(initial=0.0):
+        value = initial
+        correction = 0.0
+
+        def add(term):
+            nonlocal value, correction
+            adjusted = term - correction
+            new = value + adjusted
+            correction = (new - value) - adjusted
+            value = new
+            return value
+
+        return add
+
+    suffix_add = accumulator()
+    for position in range(len(top) - 1, -1, -1):
+        suffix[position] = suffix_add(known[position] / (position + 1))
+    ideal = [0.0]
+    ideal_add = accumulator()
+    for rank in range(1, min(k, universe_size) + 1):
+        ideal.append(ideal_add(1 / math.log2(rank + 1)))
+    base_ap = math.fsum(prefix[i + 1] / (i + 1) for i, bit in enumerate(known) if bit)
+    base_dcg = math.fsum(1 / math.log2(i + 2) for i, bit in enumerate(known) if bit)
+    base_first = next((i + 1 for i, bit in enumerate(known) if bit), 0)
+    # [AP accumulator, DCG accumulator, selected reciprocal suffix, first hit]
+    states = {
+        direction: [
+            accumulator(base_ap),
+            accumulator(base_dcg),
+            accumulator(),
+            base_first,
+        ]
+        for direction in ("lower", "upper")
+    }
+    ap = {direction: base_ap for direction in states}
+    dcg = {direction: base_dcg for direction in states}
+    selected_suffix = 0.0
     ends = {m: {"lower": None, "upper": None} for m in METRICS}
-    witnesses = {m: {} for m in METRICS}
-    feasible = 0
+    choices = {m: {} for m in METRICS}
     min_total = None
     max_total = None
-    # Enumerate only the unknown-relevant count in the top-k, not 2**unknown_all
-    # completions or all possible outside totals. At a fixed count, moving a
-    # positive earlier never lowers any supported numerator. The denominator
-    # is monotone in total relevance, so only feasible total endpoints matter.
     for count in range(len(unknown) + 1):
+        if count:
+            for direction, position in (
+                ("lower", unknown[-count]),
+                ("upper", unknown[count - 1]),
+            ):
+                state = states[direction]
+                rank = position + 1
+                # Earliest-first additions have count-1 selected positives before
+                # rank, none after. Latest-first has them all after, none before.
+                earlier = count - 1 if direction == "upper" else 0
+                later = selected_suffix if direction == "lower" else 0.0
+                ap[direction] = state[0](
+                    (prefix[position] + earlier + 1) / rank
+                    + suffix[position + 1]
+                    + later
+                )
+                dcg[direction] = state[1](1 / math.log2(rank + 1))
+                state[3] = min(state[3], rank) if state[3] else rank
+                if direction == "lower":
+                    selected_suffix = state[2](1 / rank)
         low = known_rel + count
         high = low + outside
         if total is not None:
             if not low <= total <= high:
                 continue
             low = high = total
-        feasible += 1
         min_total = low if min_total is None else min(min_total, low)
         max_total = high if max_total is None else max(max_total, high)
-        for direction, positions, relevant_total in (
-            ("lower", unknown[len(unknown) - count :] if count else [], high),
-            ("upper", unknown[:count], low),
-        ):
-            bits = known.copy()
-            for position in positions:
-                bits[position] = 1
-            scores = _score(bits, relevant_total, k)
+        for direction, relevant_total in (("lower", high), ("upper", low)):
+            hits = prefix[-1] + count
+            first = states[direction][3]
+            denom = ideal[min(relevant_total, k)]
+            scores = _metric_scores(
+                hits, first, ap[direction], dcg[direction], denom, relevant_total, k
+            )
             for metric, score in scores.items():
                 previous = ends[metric][direction]
                 better = previous is None or (
@@ -111,16 +180,28 @@ def _query(ordered, judgments, universe_size, k, total, examples):
                 )
                 if better:
                     ends[metric][direction] = score
-                    if examples:
-                        witnesses[metric][direction] = {
-                            "total_relevant": relevant_total,
-                            "unjudged_top_relevant": [top[p] for p in positions],
-                            "unjudged_outside_relevant_count": (
-                                relevant_total - known_rel - count
-                            ),
-                        }
-    if not feasible:
-        raise BoundsError("total relevant count contradicts judgments or universe")
+                    choices[metric][direction] = (count, relevant_total)
+    # Re-score the at most ten selected completions using the original fsum
+    # evaluator. Recurrences choose extrema, but emitted scores stay bound to
+    # an actual completion rather than accumulated roundoff (e.g. 1+epsilon).
+    final_scores = {}
+    for metric in METRICS:
+        for direction in ("lower", "upper"):
+            count, relevant_total = choices[metric][direction]
+            positions = (
+                unknown[:count]
+                if direction == "upper"
+                else unknown[len(unknown) - count :]
+                if count
+                else []
+            )
+            key = (tuple(positions), relevant_total)
+            if key not in final_scores:
+                bits = known.copy()
+                for position in positions:
+                    bits[position] = 1
+                final_scores[key] = _score(bits, relevant_total, k)
+            ends[metric][direction] = final_scores[key][metric]
     baseline_valid = total is None or total == known_rel
     result = {
         "universe_documents": universe_size,
@@ -138,6 +219,24 @@ def _query(ordered, judgments, universe_size, k, total, examples):
         },
     }
     if examples:
+        witnesses = {m: {} for m in METRICS}
+        for metric in METRICS:
+            for direction in ("lower", "upper"):
+                count, relevant_total = choices[metric][direction]
+                positions = (
+                    unknown[:count]
+                    if direction == "upper"
+                    else unknown[len(unknown) - count :]
+                    if count
+                    else []
+                )
+                witnesses[metric][direction] = {
+                    "total_relevant": relevant_total,
+                    "unjudged_top_relevant": [top[p] for p in positions],
+                    "unjudged_outside_relevant_count": relevant_total
+                    - known_rel
+                    - count,
+                }
         result["endpoint_examples"] = witnesses
     return result
 

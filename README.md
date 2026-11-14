@@ -87,7 +87,13 @@ tools. [Sources and distinctions](EVIDENCE.md).
   ordinary double-precision arithmetic, not certified outward-rounded intervals.
 
 [FORMAT.md](FORMAT.md) covers validation, output and resource limits.
-[DESIGN.md](DESIGN.md) explains the extremizers and cost.
+[DESIGN.md](DESIGN.md) explains incremental extremizer scoring and its cost.
+The existing conservative work-admission rule remains unchanged. Near-tied
+candidate selection can change endpoint examples **and emitted values** by
+floating-point roundoff versus the prior full scan. Each emitted endpoint remains
+a feasible completion score, without exact numeric baseline-parity or certified
+outward-rounding guarantees. Examples are hypothetical witnesses, not stable
+label advice.
 
 ## Python API
 
