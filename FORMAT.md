@@ -42,8 +42,12 @@ are contradictory and rejected. All validation completes before JSON is emitted.
   are negative. Documents ranked below k count as outside. The count never
   selects known-positive or known-negative documents. No outside IDs are emitted.
 
-Intervals are attainable under the declared binary constraints, subject to
-normal floating-point rounding. They do not cover label errors, missing
+Each emitted endpoint is a feasible completion score under the declared binary
+constraints, subject to normal floating-point rounding. Near-tied selection can
+also shift emitted endpoints by roundoff versus the prior full-scan evaluator.
+There is no exact numeric baseline-parity, floating-point-extremum or certified
+outward-rounding guarantee. Observed small differences do not prove a universal
+drift size or direction. They do not cover label errors, missing
 universe members, relevance grades, dependent-query constraints or alternative
 metric conventions.
 
@@ -53,7 +57,9 @@ metric conventions.
 `--max-work` defaults to 5,000,000. For query q, let L be the returned length
 clipped at k, M its unjudged count there, and C its universe size. Work units are
 `(M+1)*(L+min(k,C)+1)`. The sum over queries is checked before scoring starts.
-Exact boundary is allowed; exceeding it fails rather than truncates.
+Exact boundary is allowed; exceeding it fails rather than truncates. This v1
+admission estimate is retained for compatibility after incremental scoring
+removed its quadratic scan; it is not a current operation counter.
 
 These are row/work admission caps, **not hard memory or wall-time bounds**.
 Parsing and in-memory inventories are needed before the work check. Inputs,
