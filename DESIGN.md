@@ -21,27 +21,60 @@ candidates. Precision and RR ignore outside labels, so these choices also
 provide compatible examples for them. The R=0 case has explicit all-zero scores.
 
 Enumerate t=0..M, score both extremizers, and retain each metric's minimum and
-maximum. Ties keep the first encountered t. This enumeration also permits exact
+maximum. Equal floating-point candidate values keep the first encountered t. This enumeration also permits exact
 totals that force positives into top-k or outside it. For multiple queries,
 constraints are independent and macro is linear, so averaging per-query minima
 and maxima yields attainable macro endpoints *for each individual metric*.
 No claim of joint attainability across metrics or score-difference optimization.
 
-## Cost
+## Incremental scoring
 
-For query q scoring costs O((M+1)*(L+min(k,C))) time, O(L+min(k,C)) transient
-space plus report examples, and stored input dictionaries/sets O(total input
-rows and identifier bytes). The implementation does not enumerate outside
-assignments or iterate all possible corpus-positive totals. This remains
-quadratic in an unjudged top-k length. The work admission cap is there to reject
-such expensive requests, not disguise the cost as linear. Default output has
-no document-ID examples but always contains query IDs. Example output can store
-up to ten lists of length L per selected query.
+Build a prefix count of fixed positives and a suffix sum of their reciprocal
+ranks. Adding an unknown positive at rank r contributes its own precision
+`(fixed_before + selected_before + 1)/r` to the AP numerator. It also adds
+`sum(1/j)` for fixed and already selected positives after r. Earliest-first
+additions have all previously selected positives before r; latest-first
+additions have them all after. A compensated running sum maintains that latter
+suffix. DCG adds one discount term and first-hit rank updates by minimum.
+Ideal DCG is precomputed once as a compensated prefix over discount terms.
+
+The candidate scan compares scores from these incremental states. After it
+chooses endpoints, it re-scores at most ten selected completions using the
+original `math.fsum` evaluator. Identical selected completions share this final
+calculation. Examples are constructed only after selection, not every time an
+endpoint improves. Reported scores are thus tied to actual finite completions,
+not the incremental sums alone.
+
+## Cost and compatibility
+
+Scoring is O(L + min(k,C) + M) time, with a fixed at-most-ten rescoring factor,
+and O(L + min(k,C)) transient space plus input/report storage. L is the
+returned length clipped at k, M its unknown count, and C the universe size.
+No quadratic bit-vector rebuild, full score scan or repeated ideal summation
+occurs for every t. Stored input dictionaries/sets remain proportional to rows
+and identifier bytes. This is not a hard memory or runtime bound.
+
+The v1 `scoring_work_units` formula, `max_work` acceptance set, JSON schema,
+input validation and metric conventions are deliberately unchanged. Its
+quadratic estimate is now a conservative compatibility admission rule rather
+than a model of current operation count. Faster scoring does not silently
+accept larger workloads. Users can explicitly raise the existing cap within
+its supported range. No new option or file format is introduced.
+
+The optimization can be slower when almost everything is judged: precomputing
+recurrence state has overhead without many candidate counts to amortize it.
+Local synthetic timings do not promise any portable speedup.
 
 ## Numerical limits
 
-Score terms use Python doubles and `math.fsum`. Discrete extremizer selection
+Candidate score terms use Python doubles and compensated running sums; final
+selected completions use the original `math.fsum` evaluator. Discrete extremizer selection
 is exact mathematically, but close floating-point candidates can tie or differ
-by roundoff. The output is not an interval-arithmetic certificate. Independent
-exhaustive tests compare within 12 decimal places. No epsilon-based system
+by roundoff. Near-tied candidate selection can shift emitted endpoints by floating-point
+roundoff relative to the prior full-scan evaluator, not only select a different
+witness. Final rescoring binds each emitted endpoint to a feasible completion's
+score, but does not guarantee the exact extremum of all floating-point scores,
+exact numeric baseline parity, or outward rounding. Small sampled differences
+do not establish a universal bound or direction of drift.
+No epsilon-based system
 ranking, confidence interpretation or decision threshold is provided.
