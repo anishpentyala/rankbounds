@@ -1,0 +1,42 @@
+"""Read-only local CSV command line."""
+
+import argparse
+import json
+import sys
+
+from .core import BoundsError, audit
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Binary retrieval metric compatibility intervals, not confidence intervals."
+    )
+    parser.add_argument("--universe", required=True)
+    parser.add_argument("--ranking", required=True)
+    parser.add_argument("--judgments", required=True)
+    parser.add_argument("--totals")
+    parser.add_argument("--k", type=int, required=True)
+    parser.add_argument("--examples", type=int, default=0)
+    parser.add_argument("--max-rows", type=int, default=1_000_000)
+    parser.add_argument("--max-work", type=int, default=5_000_000)
+    args = parser.parse_args(argv)
+    try:
+        report = audit(
+            args.universe,
+            args.ranking,
+            args.judgments,
+            k=args.k,
+            totals=args.totals,
+            examples=args.examples,
+            max_rows=args.max_rows,
+            max_work=args.max_work,
+        )
+    except BoundsError as exc:
+        print("rankbounds: " + str(exc), file=sys.stderr)
+        return 2
+    print(json.dumps(report, sort_keys=True, indent=2, allow_nan=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
