@@ -243,4 +243,4 @@ def audit(
         "scoring_work_units": work,
         "macro": macro,
         "queries": queries,
-}
+    }
