@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rankbounds"
+version = "0.1.0"
+description = "Finite-universe binary retrieval metric compatibility intervals"
+requires-python = ">=3.9"
+license = "MIT"
+readme = "README.md"
+
+[project.scripts]
+rankbounds = "rankbounds.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 88
