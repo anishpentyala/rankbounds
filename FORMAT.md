@@ -70,3 +70,48 @@ untrusted large files. No disk scratch or network calls are used.
 `k`, `max_rows`, `max_work` must be integers from 1 through 1,000,000,000;
 `examples` is 0..20, default 0. Boolean API arguments are rejected as integers.
 There is no runtime override to silently skip bad rows or incomplete totals.
+
+## Paired mode
+
+`compare(universe, left_ranking, right_ranking, judgments, k=..., ...)` and CLI
+`--comparison-ranking RIGHT.csv` use the same strict files, optional totals,
+option ranges and per-file row cap as single-run mode. The existing `--ranking`
+is the left run. Both rankings are validated in full before scoring; malformed
+or contradictory input, including below-cutoff rows in either ranking, yields
+an error with no report JSON. Neither API writes or changes input files.
+
+Paired schema version 1 uses the distinct mode
+`finite_binary_paired_compatibility`, `difference: left_minus_right`, `k`,
+`query_count`, `scoring_work_units`, `macro`, and lexical `queries`. Metrics are
+exactly `precision`, `recall`, `ndcg`, each with lower/upper differences. Scores
+use the same conventions as single-run mode, including zero recall/nDCG when
+there are no relevant documents and precision's denominator k for short runs.
+A query row also has universe/judgment/known-relevant/unjudged counts,
+left/right top counts, top-union and unjudged-top-union counts, and feasible
+relevant-total bounds. There is no pass/fail or statistical significance field.
+
+For the first `examples` lexical queries, each endpoint has `left_score`,
+`right_score`, `total_relevant`, lexical `unjudged_union_relevant` IDs and an
+`unjudged_outside_union_relevant_count`. Keep known labels fixed, assign listed
+unknown union documents positive and all other unknown union documents negative.
+Choose any stated number of unknown documents outside BOTH top-k sets to be
+positive; all other unknown labels are negative. This single completed labeling
+reproduces both scores and their difference, subject to floating-point rounding.
+Ranked-below-cutoff documents are outside unless present in the other top-k.
+Outside IDs are never emitted. Different metrics/directions can use different
+completions; all endpoints are not claimed jointly attainable.
+
+Let L and T be the two clipped ranking lengths, M the number of unknown documents
+in their union, and C the universe size. Paired work admission units per query are
+`(M+1)*(L+T+min(k,C)+1)`. Sum across all queries; exact cap equality is allowed.
+Default `max_work` is 5,000,000. This is an admission estimate, not an operation,
+hard memory or wall-time bound. Parsing, identifier storage and report generation
+can still be large. Compared with single-run mode, there is one extra fully
+validated ranking input. There is no scan of all binary label assignments.
+
+Coefficient sums, normalizers and endpoint selection use ordinary double
+precision with compensated or fsum accumulation where appropriate. Selected
+completions are re-scored on each run and subtracted. Near ties or cancellation
+can affect endpoint choice/value by roundoff. No guarantee of the exact extrema
+of all floating-point computations, outward rounding, or numerical separation
+from zero is made. Do not treat a tiny signed endpoint as a certified ranking.

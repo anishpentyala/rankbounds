@@ -25,7 +25,9 @@ maximum. Equal floating-point candidate values keep the first encountered t. Thi
 totals that force positives into top-k or outside it. For multiple queries,
 constraints are independent and macro is linear, so averaging per-query minima
 and maxima yields attainable macro endpoints *for each individual metric*.
-No claim of joint attainability across metrics or score-difference optimization.
+Single-run audit makes no claim of joint attainability across metrics or
+score-difference optimization. The separate paired API below optimizes three
+shared-label metric differences.
 
 ## Incremental scoring
 
@@ -78,3 +80,40 @@ exact numeric baseline parity, or outward rounding. Small sampled differences
 do not establish a universal bound or direction of drift.
 No epsilon-based system
 ranking, confidence interpretation or decision threshold is provided.
+
+## Shared-label paired differences
+
+Paired precision, recall and binary nDCG have a common denominator for two runs
+under the same completed labels: respectively k, total relevance R, or ideal
+DCG(min(R,k)). Their difference numerator is a weighted sum of document labels.
+A document's coefficient is its left-minus-right inclusion indicator for
+precision/recall, or its left-minus-right rank discount for nDCG. A document
+present in both runs has ONE label and the difference of its two coefficients.
+Known labels contribute a fixed sum. Unknown documents outside both top-k sets
+have zero coefficient but can change R. AP's numerator is not linear in labels;
+this method makes no paired AP claim. RR is also excluded from this API.
+
+Let t be the number of unknown positive labels in the union of the top-k sets.
+At fixed t, sum the t smallest coefficients to minimize the numerator, or the
+t largest to maximize it. An exchange from a larger selected coefficient to a
+smaller unselected one cannot increase the sum. R ranges from known positives
+plus t through that count plus unknown documents outside the union, intersected
+with any exact total. An empty intersection is skipped. Unlike single-run
+nonnegative scores, this numerator is SIGNED: for the lower endpoint, choose
+small R for a negative numerator and large R for a positive numerator; reverse
+those choices for the upper endpoint. Zero denominators imply zero total
+relevance and explicitly yield zero scores. Precision ignores R.
+
+Scan every feasible t for each metric/direction, retain the best candidate,
+then re-score each selected labeling on BOTH runs with the existing score
+function. Outside unknown positives need only a count because neither run
+retrieves them above cutoff. This supplies actual shared-label witnesses.
+Independent queries can attain their endpoints independently, so equal-weight
+averages give per-metric macro extrema. Floating-point qualifications from
+FORMAT.md still apply; this is not a certified numeric optimizer.
+
+For one query, coefficient construction costs O(L+T), sorting O(M log M),
+normalizer precomputation O(min(k,C)), and candidate scanning O(M). A fixed six
+endpoint rescoring operations add O(L+T+min(k,C)). Transient storage is linear
+in those sizes, plus stored inputs, known labels and requested witnesses.
+These are algorithmic bounds, not demonstrated speedups or hard memory limits.
