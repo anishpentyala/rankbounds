@@ -121,3 +121,42 @@ examples, exercise exact totals, empty/short runs, zero-positive queries,
 query-local document identity, row-order stability and fail-closed parsing.
 These tests do not establish that a real inventory or judgment set is correct.
 MIT license. Source distribution only; no hosted service or data upload.
+
+## Compare two rankings under the same missing labels
+
+Separate single-run endpoints generally use different hypothetical judgments.
+Subtracting those endpoints can therefore exaggerate the possible difference.
+For precision, recall and binary nDCG, `compare` optimizes the difference while
+requiring both rankings to use the **same label for each document**:
+
+```python
+from rankbounds import compare
+
+report = compare(
+    "universe.csv", "left.csv", "right.csv", "judgments.csv", k=10,
+    # totals="totals.csv",  # Optional exact per-query relevant counts.
+    examples=1,
+)
+print(report["macro"]["ndcg"])  # Attainable left-minus-right endpoints.
+```
+
+```sh
+rankbounds --universe universe.csv --ranking left.csv \
+  --comparison-ranking right.csv --judgments judgments.csv --k 10
+```
+
+Both rankings use the existing ranking CSV format and the same cutoff. Each
+must reference the declared universe, including rows below the cutoff. A missing
+query ranking is empty, never omitted from the macro average. Identical rankings
+have zero paired difference even when their separate intervals are wide.
+
+This paired mode supports **precision, recall and binary nDCG only**. It does
+not report paired AP or reciprocal-rank bounds. A positive difference favors the
+left ranking under the stated metric, but these are compatibility intervals, not
+statistical evidence, confidence intervals, or a significance test. There is no
+automatic winner decision, tolerance threshold or guaranteed outward rounding.
+The finite universe and known labels are still caller claims. Endpoint examples
+are hypothetical shared completions, not new judgments; IDs are disclosed only
+when examples are requested, apart from the query IDs always in the report.
+Single-run mode and its five metrics remain available without
+`--comparison-ranking`. [Paired format and limits](FORMAT.md#paired-mode).
