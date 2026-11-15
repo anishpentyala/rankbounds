@@ -1,13 +1,14 @@
-"""Shared-label paired bounds for linear-numerator binary retrieval metrics."""
+"""Shared-label paired bounds for binary retrieval metrics."""
 
 import math
 
 from .core import BoundsError, _load_inputs, _load_ranking, _positive, _score
+from .reciprocal import _reciprocal_bounds
 
 PAIRED_METRICS = ("precision", "recall", "ndcg")
 
 
-def _paired_query(left, right, judgments, size, k, total, examples):
+def _paired_query(left, right, judgments, size, k, total, examples, include_rr=False):
     left, right = left[:k], right[:k]
     union = sorted(set(left) | set(right))
     unknown = [doc for doc in union if doc not in judgments]
@@ -99,6 +100,10 @@ def _paired_query(left, right, judgments, size, k, total, examples):
                     "left_score": scores[0],
                     "right_score": scores[1],
                 }
+    if include_rr:
+        ends["rr"], witnesses["rr"] = _reciprocal_bounds(
+            left, right, judgments, size, total, examples
+        )
     result = {
         "universe_documents": size,
         "judged_documents": len(judgments),
@@ -130,12 +135,16 @@ def compare(
     examples=0,
     max_rows=1_000_000,
     max_work=5_000_000,
+    include_rr=False,
 ):
     """Attainable left-minus-right metric bounds under shared binary labels.
 
-    Precision, recall and binary nDCG only. No AP or reciprocal-rank claim.
+    Precision, recall and binary nDCG, plus optional reciprocal rank. No AP.
     Every query, including empty runs, contributes equally to macro endpoints.
     """
+    if type(include_rr) is not bool:
+        raise BoundsError("include_rr must be a boolean")
+    metrics = PAIRED_METRICS + (("rr",) if include_rr else ())
     for value, name in ((k, "k"), (max_rows, "max_rows"), (max_work, "max_work")):
         _positive(value, name)
     if type(examples) is not int or not 0 <= examples <= 20:
@@ -151,6 +160,9 @@ def compare(
         work += (unknown + 1) * (
             len(left[qid][:k]) + len(right[qid][:k]) + min(k, len(inventory[qid])) + 1
         )
+        if include_rr:
+            a, b = len(left[qid][:k]), len(right[qid][:k])
+            work += (a + 1) * (b + 1) * (a + b + 1)
         if work > max_work:
             raise BoundsError("paired scoring work limit exceeded")
     queries = [
@@ -164,6 +176,7 @@ def compare(
                 k,
                 counts.get(qid),
                 index < examples,
+                include_rr,
             ),
         }
         for index, qid in enumerate(sorted(inventory))
@@ -181,7 +194,7 @@ def compare(
                 / len(queries)
                 for direction in ("lower", "upper")
             }
-            for metric in PAIRED_METRICS
+            for metric in metrics
         },
         "queries": queries,
     }
