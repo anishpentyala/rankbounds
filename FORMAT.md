@@ -83,7 +83,8 @@ an error with no report JSON. Neither API writes or changes input files.
 Paired schema version 1 uses the distinct mode
 `finite_binary_paired_compatibility`, `difference: left_minus_right`, `k`,
 `query_count`, `scoring_work_units`, `macro`, and lexical `queries`. Metrics are
-exactly `precision`, `recall`, `ndcg`, each with lower/upper differences. Scores
+by default `precision`, `recall`, `ndcg`, each with lower/upper differences.
+Opt-in `include_rr=True` adds `rr` as described below. Scores
 use the same conventions as single-run mode, including zero recall/nDCG when
 there are no relevant documents and precision's denominator k for short runs.
 A query row also has universe/judgment/known-relevant/unjudged counts,
@@ -115,3 +116,17 @@ completions are re-scored on each run and subtracted. Near ties or cancellation
 can affect endpoint choice/value by roundoff. No guarantee of the exact extrema
 of all floating-point computations, outward rounding, or numerical separation
 from zero is made. Do not treat a tiny signed endpoint as a certified ranking.
+
+### Opt-in paired reciprocal rank
+
+`compare(..., include_rr=True)` or CLI `--paired-rr` adds `rr` to paired `macro`,
+per-query `metrics`, and (when requested) `endpoint_examples`. Default False
+leaves all report fields and admission units unchanged. No paired AP is added.
+The same k, known labels, exact totals and finite universe apply; RR is zero
+without a relevant returned document at or before k.
+
+Add `(L+1)*(R+1)*(L+R+1)` units per query to the existing paired charge. Work is
+checked across the whole query set before calling either scoring solver. The
+charge conservatively models first-position pair enumeration and prefix/union
+set work, not exact CPU operations or a hard resource bound. Endpoint witnesses
+use the existing shared-completion layout and disclosure rules.

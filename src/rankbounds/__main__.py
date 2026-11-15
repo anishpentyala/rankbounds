@@ -19,6 +19,11 @@ def main(argv=None):
         "--comparison-ranking",
         help="Right ranking for shared-label left-minus-right bounds",
     )
+    parser.add_argument(
+        "--paired-rr",
+        action="store_true",
+        help="Also bound paired reciprocal rank; requires --comparison-ranking",
+    )
     parser.add_argument("--totals")
     parser.add_argument("--k", type=int, required=True)
     parser.add_argument("--examples", type=int, default=0)
@@ -26,6 +31,9 @@ def main(argv=None):
     parser.add_argument("--max-work", type=int, default=5_000_000)
     args = parser.parse_args(argv)
     try:
+        if args.paired_rr and not args.comparison_ranking:
+            raise BoundsError("--paired-rr requires --comparison-ranking")
+        options = {"include_rr": args.paired_rr} if args.comparison_ranking else {}
         function = compare if args.comparison_ranking else audit
         inputs = [args.universe, args.ranking]
         if args.comparison_ranking:
@@ -38,6 +46,7 @@ def main(argv=None):
             examples=args.examples,
             max_rows=args.max_rows,
             max_work=args.max_work,
+            **options,
         )
     except BoundsError as exc:
         print("rankbounds: " + str(exc), file=sys.stderr)
