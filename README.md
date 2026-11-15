@@ -150,9 +150,10 @@ must reference the declared universe, including rows below the cutoff. A missing
 query ranking is empty, never omitted from the macro average. Identical rankings
 have zero paired difference even when their separate intervals are wide.
 
-This paired mode supports **precision, recall and binary nDCG only**. It does
-not report paired AP or reciprocal-rank bounds. A positive difference favors the
-left ranking under the stated metric, but these are compatibility intervals, not
+By default, paired mode reports **precision, recall and binary nDCG**.
+Opt in to paired reciprocal rank with `compare(..., include_rr=True)` or
+`--paired-rr` together with `--comparison-ranking`. It does not report paired AP.
+A positive difference favors the left ranking under the stated metric, but these are compatibility intervals, not
 statistical evidence, confidence intervals, or a significance test. There is no
 automatic winner decision, tolerance threshold or guaranteed outward rounding.
 The finite universe and known labels are still caller claims. Endpoint examples
@@ -160,3 +161,30 @@ are hypothetical shared completions, not new judgments; IDs are disclosed only
 when examples are requested, apart from the query IDs always in the report.
 Single-run mode and its five metrics remain available without
 `--comparison-ranking`. [Paired format and limits](FORMAT.md#paired-mode).
+
+### Optional paired reciprocal rank
+
+```sh
+rankbounds --universe universe.csv --ranking left.csv \
+  --comparison-ranking right.csv --judgments judgments.csv --k 10 --paired-rr
+```
+
+RR is the reciprocal of the first relevant rank at or before k, or zero if
+there is no such rank. Opt-in mode adds `rr` bounds and endpoint examples using
+the same report layout. `include_rr` must be an actual boolean; default False
+preserves the prior metrics and work-admission calculation. The CLI flag without
+a comparison ranking is an input error, not a request for single-run RR.
+
+The solver enumerates possible first relevant positions in both truncated runs,
+rejects incompatible shared labels and totals, and constructs a feasible shared
+completion. It does not subtract separate RR intervals. Exact totals constrain
+all documents, including those outside the top-k union. RR is insensitive to
+labels after both first hits, but those labels still matter for feasibility.
+
+This explicit enumeration has a conservative extra work-admission charge of
+`(L + 1) * (R + 1) * (L + R + 1)` per query, where L/R are the truncated run
+lengths. It can reject large cutoffs admitted by default mode; it is not intended
+as a fast large-k solver. The existing `max_work` limit covers both charges,
+checked for every query before any scoring. These are not hard time/RAM limits.
+No confidence, significance, winner, or outward-rounding guarantee is added.
+[Proof and checks](RECIPROCAL_VALIDATION.md).
