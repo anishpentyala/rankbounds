@@ -5,6 +5,7 @@ import json
 import sys
 
 from .core import BoundsError, audit
+from .paired import compare
 
 
 def main(argv=None):
@@ -14,6 +15,10 @@ def main(argv=None):
     parser.add_argument("--universe", required=True)
     parser.add_argument("--ranking", required=True)
     parser.add_argument("--judgments", required=True)
+    parser.add_argument(
+        "--comparison-ranking",
+        help="Right ranking for shared-label left-minus-right bounds",
+    )
     parser.add_argument("--totals")
     parser.add_argument("--k", type=int, required=True)
     parser.add_argument("--examples", type=int, default=0)
@@ -21,10 +26,13 @@ def main(argv=None):
     parser.add_argument("--max-work", type=int, default=5_000_000)
     args = parser.parse_args(argv)
     try:
-        report = audit(
-            args.universe,
-            args.ranking,
-            args.judgments,
+        function = compare if args.comparison_ranking else audit
+        inputs = [args.universe, args.ranking]
+        if args.comparison_ranking:
+            inputs.append(args.comparison_ranking)
+        inputs.append(args.judgments)
+        report = function(
+            *inputs,
             k=args.k,
             totals=args.totals,
             examples=args.examples,
