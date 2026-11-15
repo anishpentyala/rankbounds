@@ -184,4 +184,4 @@ def compare(
             for metric in PAIRED_METRICS
         },
         "queries": queries,
-              }
+            }
