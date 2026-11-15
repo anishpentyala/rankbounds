@@ -241,6 +241,60 @@ def _query(ordered, judgments, universe_size, k, total, examples):
     return result
 
 
+def _load_ranking(ranking, inventory, max_rows):
+    runs = {qid: {} for qid in inventory}
+    seen = {qid: set() for qid in inventory}
+    for qid, doc, rank_text in _rows(
+        ranking, ("query_id", "document_id", "rank"), max_rows
+    ):
+        if qid not in inventory or doc not in inventory[qid]:
+            raise BoundsError("ranking document is outside declared query universe")
+        rank = _integer(rank_text, "rank", 1)
+        if rank in runs[qid] or doc in seen[qid]:
+            raise BoundsError("duplicate ranking rank or document")
+        runs[qid][rank] = doc
+        seen[qid].add(doc)
+    ordered = {}
+    for qid, run in runs.items():
+        if sorted(run) != list(range(1, len(run) + 1)):
+            raise BoundsError("ranking ranks must be contiguous starting at one")
+        ordered[qid] = [run[r] for r in range(1, len(run) + 1)]
+    return ordered
+
+
+def _load_inputs(universe, ranking, judgments, totals, max_rows):
+    inventory = {}
+    for qid, doc in _rows(universe, ("query_id", "document_id"), max_rows):
+        docs = inventory.setdefault(qid, set())
+        if doc in docs:
+            raise BoundsError("duplicate universe document")
+        docs.add(doc)
+    if not inventory:
+        raise BoundsError("universe must declare at least one query/document pair")
+    ordered = _load_ranking(ranking, inventory, max_rows)
+    labels = {qid: {} for qid in inventory}
+    for qid, doc, rel_text in _rows(
+        judgments, ("query_id", "document_id", "relevant"), max_rows
+    ):
+        if qid not in inventory or doc not in inventory[qid]:
+            raise BoundsError("judgment document is outside declared query universe")
+        relevant = _integer(rel_text, "relevant")
+        if relevant > 1:
+            raise BoundsError("relevant must be binary zero or one")
+        if doc in labels[qid]:
+            raise BoundsError("duplicate judgment")
+        labels[qid][doc] = relevant
+    counts = {}
+    if totals is not None:
+        for qid, count_text in _rows(totals, ("query_id", "total_relevant"), max_rows):
+            if qid not in inventory or qid in counts:
+                raise BoundsError("unknown or duplicate total query")
+            counts[qid] = _integer(count_text, "total_relevant")
+        if set(counts) != set(inventory):
+            raise BoundsError("totals must cover every declared query exactly once")
+    return inventory, ordered, labels, counts
+
+
 def audit(
     universe,
     ranking,
@@ -263,51 +317,9 @@ def audit(
         _positive(value, name)
     if type(examples) is not int or not 0 <= examples <= 20:
         raise BoundsError("examples must be an integer from 0 through 20")
-    inventory = {}
-    for qid, doc in _rows(universe, ("query_id", "document_id"), max_rows):
-        docs = inventory.setdefault(qid, set())
-        if doc in docs:
-            raise BoundsError("duplicate universe document")
-        docs.add(doc)
-    if not inventory:
-        raise BoundsError("universe must declare at least one query/document pair")
-    runs = {qid: {} for qid in inventory}
-    seen = {qid: set() for qid in inventory}
-    for qid, doc, rank_text in _rows(
-        ranking, ("query_id", "document_id", "rank"), max_rows
-    ):
-        if qid not in inventory or doc not in inventory[qid]:
-            raise BoundsError("ranking document is outside declared query universe")
-        rank = _integer(rank_text, "rank", 1)
-        if rank in runs[qid] or doc in seen[qid]:
-            raise BoundsError("duplicate ranking rank or document")
-        runs[qid][rank] = doc
-        seen[qid].add(doc)
-    ordered = {}
-    for qid, run in runs.items():
-        if sorted(run) != list(range(1, len(run) + 1)):
-            raise BoundsError("ranking ranks must be contiguous starting at one")
-        ordered[qid] = [run[r] for r in range(1, len(run) + 1)]
-    labels = {qid: {} for qid in inventory}
-    for qid, doc, rel_text in _rows(
-        judgments, ("query_id", "document_id", "relevant"), max_rows
-    ):
-        if qid not in inventory or doc not in inventory[qid]:
-            raise BoundsError("judgment document is outside declared query universe")
-        relevant = _integer(rel_text, "relevant")
-        if relevant > 1:
-            raise BoundsError("relevant must be binary zero or one")
-        if doc in labels[qid]:
-            raise BoundsError("duplicate judgment")
-        labels[qid][doc] = relevant
-    counts = {}
-    if totals is not None:
-        for qid, count_text in _rows(totals, ("query_id", "total_relevant"), max_rows):
-            if qid not in inventory or qid in counts:
-                raise BoundsError("unknown or duplicate total query")
-            counts[qid] = _integer(count_text, "total_relevant")
-        if set(counts) != set(inventory):
-            raise BoundsError("totals must cover every declared query exactly once")
+    inventory, ordered, labels, counts = _load_inputs(
+        universe, ranking, judgments, totals, max_rows
+    )
     work = 0
     for qid in inventory:
         top = ordered[qid][:k]
