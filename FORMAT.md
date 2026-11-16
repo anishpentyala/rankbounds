@@ -121,7 +121,7 @@ from zero is made. Do not treat a tiny signed endpoint as a certified ranking.
 
 `compare(..., include_rr=True)` or CLI `--paired-rr` adds `rr` to paired `macro`,
 per-query `metrics`, and (when requested) `endpoint_examples`. Default False
-leaves all report fields and admission units unchanged. No paired AP is added.
+leaves all report fields and admission units unchanged. That option alone does not add paired AP; use the separate `include_ap` opt-in.
 The same k, known labels, exact totals and finite universe apply; RR is zero
 without a relevant returned document at or before k.
 
@@ -130,3 +130,29 @@ checked across the whole query set before calling either scoring solver. The
 charge conservatively models first-position pair enumeration and prefix/union
 set work, not exact CPU operations or a hard resource bound. Endpoint witnesses
 use the existing shared-completion layout and disclosure rules.
+
+
+### Opt-in paired AP
+
+`compare(..., include_ap=True)` or CLI `--paired-ap` (with
+`--comparison-ranking`) adds `ap_total` to paired macro, per-query metrics and
+requested endpoint examples. Defaults remain unchanged. AP sums precision at
+each relevant retrieved rank through k, divided by the completed universe's
+total relevant count R; R=0 gives zero. This is not AP divided by min(R,k).
+
+Let U be the number of unjudged documents in the top-k union, and L and Rlen
+the two truncated ranking lengths. Add `2**U * 2 * (L + Rlen + 1)` work units
+per query to the existing paired charge (and RR charge, if requested). The
+whole query set is checked before any solver runs. A bit-length guard rejects
+obviously excessive exponent sizes without first constructing the huge integer.
+These admission units model enumerated assignments and rank scans, not exact
+CPU operations, a wall-clock promise or a hard memory limit.
+
+For each union assignment, both AP numerators are fixed. Outside-union unknown
+positives change only the shared denominator. Its feasible low and high totals
+suffice for both signed-difference extrema; when an exact total is supplied,
+only compatible assignments and that total are scored. Witnesses use the same
+shared-label format as other paired metrics. Each endpoint is attainable, but
+different metrics/directions can require different completions. Scores use
+ordinary double precision, not certified outward-rounded intervals. Work-limit
+failure emits no partial JSON. No AP quality threshold or deployment claim.
