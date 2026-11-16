@@ -218,4 +218,4 @@ def compare(
             for metric in metrics
         },
         "queries": queries,
-        }
+    }
