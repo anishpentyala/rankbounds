@@ -152,7 +152,7 @@ have zero paired difference even when their separate intervals are wide.
 
 By default, paired mode reports **precision, recall and binary nDCG**.
 Opt in to paired reciprocal rank with `compare(..., include_rr=True)` or
-`--paired-rr` together with `--comparison-ranking`. It does not report paired AP.
+`--paired-rr` together with `--comparison-ranking`. Use the separate opt-in `--paired-ap` for budgeted paired AP/total-R bounds.
 A positive difference favors the left ranking under the stated metric, but these are compatibility intervals, not
 statistical evidence, confidence intervals, or a significance test. There is no
 automatic winner decision, tolerance threshold or guaranteed outward rounding.
@@ -188,3 +188,28 @@ as a fast large-k solver. The existing `max_work` limit covers both charges,
 checked for every query before any scoring. These are not hard time/RAM limits.
 No confidence, significance, winner, or outward-rounding guarantee is added.
 [Proof and checks](RECIPROCAL_VALIDATION.md).
+
+
+### Optional paired AP with shared labels
+
+```sh
+rankbounds --universe universe.csv --ranking left.csv \
+  --comparison-ranking right.csv --judgments judgments.csv --k 10 --paired-ap
+```
+
+`compare(..., include_ap=True)` adds `ap_total` to paired results. This is AP@k
+with the **completed universe's total relevant count** as denominator, not
+`min(R, k)`. It compares the same completion on both rankings. Separate AP
+intervals cannot be subtracted as though their extremizing labels were shared.
+The existing no-relevant-documents convention gives AP zero when R is zero.
+
+This option enumerates every assignment to the unjudged top-k union, so its
+cost is exponential in that union's unknown-document count. Outside-union labels
+only affect the shared denominator; the solver checks its feasible endpoints
+(or the supplied exact total) instead of enumerating outside subsets. The
+existing `--max-work` admission rule includes this extra cost and can refuse even
+moderate top-k unions. Nothing is sampled or silently dropped to fit. Default
+paired output and work units are unchanged without the opt-in. It combines with
+`--paired-rr`. This is an addition to an existing tool, not a new retrieval metric
+or claim of a new optimization method. Ordinary floating-point and witness
+privacy limits still apply. [AP format and cost](FORMAT.md#opt-in-paired-ap).
