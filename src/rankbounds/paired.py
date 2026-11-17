@@ -2,13 +2,16 @@
 
 import math
 
+from .average_precision import _average_precision_bounds
 from .core import BoundsError, _load_inputs, _load_ranking, _positive, _score
 from .reciprocal import _reciprocal_bounds
 
 PAIRED_METRICS = ("precision", "recall", "ndcg")
 
 
-def _paired_query(left, right, judgments, size, k, total, examples, include_rr=False):
+def _paired_query(
+    left, right, judgments, size, k, total, examples, include_rr=False, include_ap=False
+):
     left, right = left[:k], right[:k]
     union = sorted(set(left) | set(right))
     unknown = [doc for doc in union if doc not in judgments]
@@ -104,6 +107,10 @@ def _paired_query(left, right, judgments, size, k, total, examples, include_rr=F
         ends["rr"], witnesses["rr"] = _reciprocal_bounds(
             left, right, judgments, size, total, examples
         )
+    if include_ap:
+        ends["ap_total"], witnesses["ap_total"] = _average_precision_bounds(
+            left, right, judgments, size, total, examples
+        )
     result = {
         "universe_documents": size,
         "judged_documents": len(judgments),
@@ -136,15 +143,22 @@ def compare(
     max_rows=1_000_000,
     max_work=5_000_000,
     include_rr=False,
+    include_ap=False,
 ):
     """Attainable left-minus-right metric bounds under shared binary labels.
 
-    Precision, recall and binary nDCG, plus optional reciprocal rank. No AP.
+    Precision, recall and binary nDCG; optional reciprocal rank and budgeted AP.
     Every query, including empty runs, contributes equally to macro endpoints.
     """
     if type(include_rr) is not bool:
         raise BoundsError("include_rr must be a boolean")
-    metrics = PAIRED_METRICS + (("rr",) if include_rr else ())
+    if type(include_ap) is not bool:
+        raise BoundsError("include_ap must be a boolean")
+    metrics = (
+        PAIRED_METRICS
+        + (("rr",) if include_rr else ())
+        + (("ap_total",) if include_ap else ())
+    )
     for value, name in ((k, "k"), (max_rows, "max_rows"), (max_work, "max_work")):
         _positive(value, name)
     if type(examples) is not int or not 0 <= examples <= 20:
@@ -163,6 +177,12 @@ def compare(
         if include_rr:
             a, b = len(left[qid][:k]), len(right[qid][:k])
             work += (a + 1) * (b + 1) * (a + b + 1)
+        if include_ap:
+            # Refuse before creating a huge power-of-two integer or solving any
+            # query. Even one unit per labeling would exceed the whole budget.
+            if unknown >= max_work.bit_length():
+                raise BoundsError("paired AP scoring work limit exceeded")
+            work += (1 << unknown) * 2 * (len(left[qid][:k]) + len(right[qid][:k]) + 1)
         if work > max_work:
             raise BoundsError("paired scoring work limit exceeded")
     queries = [
@@ -177,6 +197,7 @@ def compare(
                 counts.get(qid),
                 index < examples,
                 include_rr,
+                include_ap,
             ),
         }
         for index, qid in enumerate(sorted(inventory))

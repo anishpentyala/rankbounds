@@ -24,6 +24,11 @@ def main(argv=None):
         action="store_true",
         help="Also bound paired reciprocal rank; requires --comparison-ranking",
     )
+    parser.add_argument(
+        "--paired-ap",
+        action="store_true",
+        help="Also bound paired AP/total-R by budgeted enumeration; requires --comparison-ranking",
+    )
     parser.add_argument("--totals")
     parser.add_argument("--k", type=int, required=True)
     parser.add_argument("--examples", type=int, default=0)
@@ -33,7 +38,13 @@ def main(argv=None):
     try:
         if args.paired_rr and not args.comparison_ranking:
             raise BoundsError("--paired-rr requires --comparison-ranking")
-        options = {"include_rr": args.paired_rr} if args.comparison_ranking else {}
+        if args.paired_ap and not args.comparison_ranking:
+            raise BoundsError("--paired-ap requires --comparison-ranking")
+        options = (
+            {"include_rr": args.paired_rr, "include_ap": args.paired_ap}
+            if args.comparison_ranking
+            else {}
+        )
         function = compare if args.comparison_ranking else audit
         inputs = [args.universe, args.ranking]
         if args.comparison_ranking:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rankbounds"
-version = "0.2.1"
+version = "0.3.0"
 description = "Finite-universe binary retrieval metric compatibility intervals"
 requires-python = ">=3.9"
 license = "MIT"
