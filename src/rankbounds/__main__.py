@@ -36,6 +36,10 @@ def main(argv=None):
         "--query-weights",
         help="CSV query_id,weight for an additional fixed-weight aggregate",
     )
+    parser.add_argument(
+        "--judgment-candidates",
+        help="CSV query_id,document_id for single-run hypothetical judgment values",
+    )
     parser.add_argument("--k", type=int, required=True)
     parser.add_argument("--examples", type=int, default=0)
     parser.add_argument("--max-rows", type=int, default=1_000_000)
@@ -51,6 +55,10 @@ def main(argv=None):
             if args.comparison_ranking
             else {}
         )
+        if args.judgment_candidates is not None:
+            if args.comparison_ranking:
+                raise BoundsError("--judgment-candidates requires single-run mode")
+            options["judgment_candidates"] = args.judgment_candidates
         function = compare if args.comparison_ranking else audit
         inputs = [args.universe, args.ranking]
         if args.comparison_ranking:
