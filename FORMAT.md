@@ -138,7 +138,9 @@ use the existing shared-completion layout and disclosure rules.
 
 `compare(..., include_ap=True)` or CLI `--paired-ap` (with
 `--comparison-ranking`) adds `ap_total` to paired macro, per-query metrics and
-requested endpoint examples. Defaults remain unchanged. AP sums precision at
+requested endpoint examples. The solver prunes impossible union-positive
+cardinalities using the declared count interval, while preserving numeric-mask
+scan order, report values and witness ties. [Details](AP_PRUNING.md). Defaults remain unchanged. AP sums precision at
 each relevant retrieved rank through k, divided by the completed universe's
 total relevant count R; R=0 gives zero. This is not AP divided by min(R,k).
 
