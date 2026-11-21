@@ -35,9 +35,9 @@ The pre-existing precision/recall/nDCG solver is unchanged.
 
 RR is opt-in through actual boolean `include_rr=True` or CLI `--paired-rr` with
 `--comparison-ranking`. No new work is done by default. For clipped lengths
-L/R, the added admission estimate is `(L+1)*(R+1)*(L+R+1)` per query. This bounds
-the shape of explicit pair enumeration and set/list processing conservatively;
-it is not a literal CPU count, time guarantee or RAM limit. Long rankings can
+L/R, the added admission estimate is `(L+1)*(R+1)*(L+R+1)` per query. This is a conservative compatibility admission rule, not a literal CPU count,
+time guarantee or RAM limit. The current implementation uses compact masks;
+[RR_MASKS.md](RR_MASKS.md) records that change and its memory tradeoff. Long rankings can
 be rejected before scoring, including fully judged rankings. All queries'
 combined work is checked before scoring any query. Parsing still happens first.
 
@@ -47,7 +47,7 @@ matched 200 seeded complete public-API reports from the unchanged released
 metric entries when opted in; the version changes to 0.2.1. No paired AP,
 confidence intervals, significance test, quality threshold or winner decision.
 
-## Actual local checks
+## Original feature checks
 
 - 92 unittest methods: the 81 existing methods retained, plus 11 new methods.
   All passed on Python 3.9, 3.10, 3.11, 3.13, 3.14 and 3.15.
