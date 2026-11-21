@@ -31,7 +31,12 @@ rankbounds --universe examples/universe.csv --ranking examples/ranking.csv \
   --k 3 --examples 1
 ```
 
-All files are read-only. Success writes one JSON document to stdout, exit 0.
+All files are read-only and must be regular files. Symlinks to regular files
+are followed; directories, named pipes, sockets and devices are refused. This
+avoids waiting for a pipe producer before CSV validation. It is not a hard
+I/O timeout or a file-content snapshot. [File-read guarantees and limits](REGULAR_INPUT.md).
+
+Success writes one JSON document to stdout, exit 0.
 Invalid/contradictory/over-budget input writes an error to stderr and no JSON,
 exit 2. There is no pass/fail quality threshold or claim that your ranking is
 safe to deploy. JSON always includes query IDs and counts. `--examples 1..20`
