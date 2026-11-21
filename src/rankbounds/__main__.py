@@ -32,6 +32,10 @@ def main(argv=None):
     constraints = parser.add_mutually_exclusive_group()
     constraints.add_argument("--totals")
     constraints.add_argument("--total-ranges")
+    parser.add_argument(
+        "--query-weights",
+        help="CSV query_id,weight for an additional fixed-weight aggregate",
+    )
     parser.add_argument("--k", type=int, required=True)
     parser.add_argument("--examples", type=int, default=0)
     parser.add_argument("--max-rows", type=int, default=1_000_000)
@@ -57,6 +61,7 @@ def main(argv=None):
             k=args.k,
             totals=args.totals,
             total_ranges=args.total_ranges,
+            query_weights=args.query_weights,
             examples=args.examples,
             max_rows=args.max_rows,
             max_work=args.max_work,
