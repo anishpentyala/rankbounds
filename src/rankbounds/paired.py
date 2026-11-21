@@ -6,6 +6,7 @@ from .average_precision import _average_precision_bounds
 from .core import (
     BoundsError,
     _load_inputs,
+    _load_judgment_candidates,
     _load_ranking,
     _load_query_weights,
     _weighted_report,
@@ -138,6 +139,72 @@ def _paired_query(
     return result
 
 
+def _paired_judgment_value(
+    candidates,
+    inventory,
+    left,
+    right,
+    labels,
+    counts,
+    k,
+    queries,
+    metrics,
+    include_rr,
+    include_ap,
+):
+    before = {q["query_id"]: q["metrics"] for q in queries}
+    rows = []
+    for qid, doc in candidates:
+        outcomes = {}
+        for label in (0, 1):
+            hypothetical = dict(labels[qid])
+            hypothetical[doc] = label
+            try:
+                _total_limits(
+                    counts.get(qid),
+                    sum(hypothetical.values()),
+                    len(inventory[qid]) - len(hypothetical),
+                )
+            except BoundsError:
+                continue
+            outcomes[str(label)] = _paired_query(
+                left[qid],
+                right[qid],
+                hypothetical,
+                len(inventory[qid]),
+                k,
+                counts.get(qid),
+                False,
+                include_rr,
+                include_ap,
+            )["metrics"]
+        values = {}
+        for metric in metrics:
+            width = before[qid][metric]["upper"] - before[qid][metric]["lower"]
+            remaining = {
+                label: ends[metric]["upper"] - ends[metric]["lower"]
+                for label, ends in outcomes.items()
+            }
+            values[metric] = {
+                "before_width": width,
+                "after_width_by_label": remaining,
+                "guaranteed_reduction": width - max(remaining.values()),
+                "best_case_reduction": width - min(remaining.values()),
+            }
+        rows.append(
+            {
+                "query_id": qid,
+                "document_id": doc,
+                "outcomes": outcomes,
+                "metrics": values,
+            }
+        )
+    return {
+        "scope": "single_query_paired_difference_interval_width",
+        "candidates": rows,
+    }
+
+
 def compare(
     universe,
     left_ranking,
@@ -148,6 +215,7 @@ def compare(
     totals=None,
     total_ranges=None,
     query_weights=None,
+    judgment_candidates=None,
     examples=0,
     max_rows=1_000_000,
     max_work=5_000_000,
@@ -159,6 +227,8 @@ def compare(
     Precision, recall and binary nDCG; optional reciprocal rank and budgeted AP.
     Every query, including empty runs, contributes equally to macro endpoints.
     query_weights optionally adds a separate shared fixed-weight aggregate.
+    judgment_candidates adds own-query conditional paired interval widths and
+    charges two original-query work estimates per candidate before any solving.
     """
     if type(include_rr) is not bool:
         raise BoundsError("include_rr must be a boolean")
@@ -178,8 +248,13 @@ def compare(
     )
     right = _load_ranking(right_ranking, inventory, max_rows)
     weights = _load_query_weights(query_weights, inventory, max_rows)
+    candidates = _load_judgment_candidates(
+        judgment_candidates, inventory, labels, max_rows
+    )
     work = 0
+    query_work = {}
     for qid in inventory:
+        start_work = work
         union = set(left[qid][:k]) | set(right[qid][:k])
         unknown = sum(doc not in labels[qid] for doc in union)
         work += (unknown + 1) * (
@@ -196,6 +271,13 @@ def compare(
             work += (1 << unknown) * 2 * (len(left[qid][:k]) + len(right[qid][:k]) + 1)
         if work > max_work:
             raise BoundsError("paired scoring work limit exceeded")
+        if candidates is not None:
+            query_work[qid] = work - start_work
+    if candidates is not None:
+        for qid, _ in candidates:
+            work += 2 * query_work[qid]
+            if work > max_work:
+                raise BoundsError("paired scoring work limit exceeded")
     queries = [
         {
             "query_id": qid,
@@ -232,4 +314,18 @@ def compare(
     }
     if weights is not None:
         report["query_weighted"] = _weighted_report(queries, weights, metrics)
+    if candidates is not None:
+        report["judgment_value"] = _paired_judgment_value(
+            candidates,
+            inventory,
+            left,
+            right,
+            labels,
+            counts,
+            k,
+            queries,
+            metrics,
+            include_rr,
+            include_ap,
+        )
     return report
