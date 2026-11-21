@@ -327,7 +327,7 @@ For a single ranking, pass `judgment_candidates="candidates.csv"` to `audit`,
 or `--judgment-candidates candidates.csv`. Its exact header is
 `query_id,document_id`; give 1 to 200 unique, currently unjudged pairs from
 the declared universe. No candidates are discovered automatically. Paired
-comparison mode is not supported for this option.
+comparison support is described below.
 
 ```sh
 rankbounds --universe examples/judgment-value/universe.csv \
@@ -367,3 +367,34 @@ differences; this is not certified outward rounding or a statistical value of
 information. Small negative reductions from roundoff are not clipped or treated
 as meaningful loss. Omitting the option leaves old reports unchanged.
 [Definitions, feasibility, cost and tests](JUDGMENT_VALUE.md).
+
+
+### Which judgment could narrow a paired comparison?
+
+Use the same explicit shortlist with `compare(..., judgment_candidates=...)`
+or add `--comparison-ranking` to the command above. Each hypothetical label
+is shared by both rankings. This analyzes the interval of the **paired
+left-minus-right difference**, not separate score intervals:
+
+```sh
+rankbounds --universe examples/judgment-value/universe.csv \
+  --ranking examples/judgment-value/ranking.csv \
+  --comparison-ranking examples/judgment-value/right.csv \
+  --judgments examples/judgment-value/judgments.csv --k 1 \
+  --judgment-candidates examples/judgment-value/candidates.csv
+```
+
+Left top 1 is a; right top 1 is c. The precision difference ranges from -1 to 1,
+width 2. Learning a's label leaves width 1 for either outcome, a guaranteed
+reduction of 1. Learning unreturned d does not narrow this precision difference.
+Identical rankings instead have zero paired width and no reduction.
+
+The scope is `single_query_paired_difference_interval_width`. Only enabled
+paired metrics appear: precision/recall/nDCG by default, plus `--paired-rr`
+and/or `--paired-ap` when requested. Conditional bounds use shared judgments
+and the original total constraints. The two extra original-query work charges
+per candidate include the optional RR/AP costs and are reserved before any
+solver. Query weights do not scale these own-query results. The shortlist
+limit, all-candidate-ID disclosure and rounding caveats above still apply.
+This is not a winner decision, statistical test, expected utility, batch-label
+plan or automatic annotation priority. [Semantics and cost](JUDGMENT_VALUE.md#paired-ranking-support).
