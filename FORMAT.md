@@ -207,3 +207,18 @@ uses O(Q) memory/output and aggregation uses O(Q*M) floating-point operations
 for Q queries and M included metrics. Existing input/report resource caveats
 and lack of certified outward rounding still apply. See [semantics and
 validation](QUERY_WEIGHTS.md).
+
+
+## Regular-file CSV inputs
+
+Every CSV input, including optional totals, total ranges and query weights,
+uses the same regular-file reader. Symlinks to regular files are allowed.
+Directories, FIFOs, sockets and devices are refused. The reader checks the
+path type before opening, then checks the opened descriptor. Where the OS
+provides O_NONBLOCK, it is used to avoid waiting on a FIFO substituted between
+those checks. Where unavailable, the precheck and descriptor check still
+apply, but there is no guarantee against a blocking substitution race.
+No hard I/O deadline or immutable snapshot is provided: regular files can
+change during a read, and network, pseudo or other filesystems may still
+block. CSV syntax, row/work admission, output and score semantics are
+unchanged for accepted inputs. [Implementation and validation](REGULAR_INPUT.md).
