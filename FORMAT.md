@@ -8,6 +8,7 @@ UTF-8 CSV, optional initial UTF-8 BOM; exact ordered headers:
 | ranking | `query_id,document_id,rank` | Unique document and rank per query |
 | judgments | `query_id,document_id,relevant` | Unique pair, binary 0/1 |
 | totals (optional) | `query_id,total_relevant` | Exactly one row per universe query |
+| total_ranges (optional) | `query_id,min_relevant,max_relevant` | Inclusive bounds, exactly one row per universe query |
 
 All IDs are literal and case-sensitive. No trimming, normalization, inferred
 negative labels or score-based tie breaking. CSV quoting and internal Unicode
@@ -156,3 +157,31 @@ shared-label format as other paired metrics. Each endpoint is attainable, but
 different metrics/directions can require different completions. Scores use
 ordinary double precision, not certified outward-rounded intervals. Work-limit
 failure emits no partial JSON. No AP quality threshold or deployment claim.
+
+
+## Total-relevant ranges
+
+`audit(..., total_ranges=PATH)` and `compare(..., total_ranges=PATH)` use the
+strict range CSV above; the CLI spelling is `--total-ranges PATH`. It is mutually
+exclusive with `totals` / `--totals`. This is a new optional input, not a change
+to existing totals headers. The same UTF-8, cell, integer, row-cap, identifier,
+duplicate and exact-query-coverage checks apply. A file with only its header is
+invalid because every universe query must have one row.
+
+Require `0 <= min_relevant <= max_relevant <= universe_documents`. Intersect
+this inclusive interval with `[known_relevant, known_relevant + unjudged_documents]`.
+Reject an empty intersection. All count constraints, across all queries, are
+checked before any metric solver runs. No partial report is emitted. Effective
+intersections populate `feasible_total_relevant`, and endpoint examples select
+only completions in that intersection. No new source paths or input document IDs
+are added to the report. Existing query IDs are still always emitted.
+
+The interval constrains total positives, not just retrieved positives. For a
+fixed top-k (or paired top-k union) assignment, unknown outside documents can
+realize every integer total between its feasible endpoints. Intersect before
+choosing the denominator. Single-run metric extrema and paired precision,
+recall, nDCG, RR and optional AP all use this same constraint. See
+[TOTAL_RANGES.md](TOTAL_RANGES.md) for the denominator and witness argument.
+Neither range input nor interval width changes `scoring_work_units`; no total
+counts or outside subsets are enumerated. Existing paired AP admission remains
+exponential in the unjudged top-k union, not interval width.
