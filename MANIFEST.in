@@ -2,3 +2,4 @@ include LICENSE README.md FORMAT.md DESIGN.md EVIDENCE.md CONTRIBUTING.md PAIRED
 recursive-include examples *.csv
 recursive-include tests *.py
 include RECIPROCAL_VALIDATION.md
+include JUDGMENT_VALUE.md
