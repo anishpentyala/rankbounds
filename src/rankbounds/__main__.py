@@ -38,7 +38,7 @@ def main(argv=None):
     )
     parser.add_argument(
         "--judgment-candidates",
-        help="CSV query_id,document_id for single-run hypothetical judgment values",
+        help="CSV query_id,document_id for hypothetical own-query judgment values",
     )
     parser.add_argument("--k", type=int, required=True)
     parser.add_argument("--examples", type=int, default=0)
@@ -56,8 +56,6 @@ def main(argv=None):
             else {}
         )
         if args.judgment_candidates is not None:
-            if args.comparison_ranking:
-                raise BoundsError("--judgment-candidates requires single-run mode")
             options["judgment_candidates"] = args.judgment_candidates
         function = compare if args.comparison_ranking else audit
         inputs = [args.universe, args.ranking]
