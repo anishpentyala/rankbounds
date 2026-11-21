@@ -203,8 +203,12 @@ with the **completed universe's total relevant count** as denominator, not
 intervals cannot be subtracted as though their extremizing labels were shared.
 The existing no-relevant-documents convention gives AP zero when R is zero.
 
-This option enumerates every assignment to the unjudged top-k union, so its
-cost is exponential in that union's unknown-document count. Outside-union labels
+This option enumerates feasible assignments to the unjudged top-k union, with
+exponential worst-case cost in that union's unknown-document count. Declared
+total counts prune impossible subset cardinalities before label sets are built.
+This speeds informative constraints but leaves the original conservative
+admission charge unchanged; broad ranges can add small traversal overhead.
+[Pruning proof, compatibility and local timings](AP_PRUNING.md). Outside-union labels
 only affect the shared denominator; the solver checks its feasible endpoints
 (or the supplied exact total) instead of enumerating outside subsets. The
 existing `--max-work` admission rule includes this extra cost and can refuse even
