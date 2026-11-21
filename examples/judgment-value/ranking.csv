@@ -1,0 +1,4 @@
+query_id,document_id,rank
+q,a,1
+q,b,2
+q,c,3
