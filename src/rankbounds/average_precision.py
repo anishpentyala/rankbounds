@@ -5,11 +5,11 @@ import math
 from .core import _total_limits
 
 
-def _ap_numerator(run, positives):
+def _ap_numerator(run_bits, positive_mask):
     hits = 0
     terms = []
-    for rank, doc in enumerate(run, 1):
-        if doc in positives:
+    for rank, bit in enumerate(run_bits, 1):
+        if bit & positive_mask:
             hits += 1
             terms.append(hits / rank)
     return math.fsum(terms)
@@ -46,9 +46,18 @@ def _average_precision_bounds(left, right, labels, size, total, examples):
     # [known+c, known+c+outside] intersects the declared total interval.
     count_low = max(0, total_low - len(fixed) - outside)
     count_high = min(len(unknown), total_high - len(fixed))
+    # Unknown bits retain the lexical subset indices used by _feasible_masks.
+    # A separate always-on bit represents every known-positive document.
+    fixed_bit = 1 << len(unknown)
+    bits = {doc: 1 << index for index, doc in enumerate(unknown)}
+    run_bits = [
+        [bits.get(doc, fixed_bit if labels.get(doc) == 1 else 0) for doc in run]
+        for run in (left, right)
+    ]
+    popcount = getattr(int, "bit_count", None)
     for mask in _feasible_masks(len(unknown), count_low, count_high):
-        selected = {doc for index, doc in enumerate(unknown) if mask & (1 << index)}
-        low = len(fixed) + len(selected)
+        count = popcount(mask) if popcount else bin(mask).count("1")
+        low = len(fixed) + count
         high = low + outside
         union_relevant = low
         low, high = max(low, total_low), min(high, total_high)
@@ -56,7 +65,7 @@ def _average_precision_bounds(left, right, labels, size, total, examples):
             continue
         # For this shared union assignment only the common denominator varies.
         totals = (low,) if low == high else (low, high)
-        numerators = [_ap_numerator(run, fixed | selected) for run in (left, right)]
+        numerators = [_ap_numerator(run, mask | fixed_bit) for run in run_bits]
         for relevant in totals:
             scores = [value / relevant if relevant else 0.0 for value in numerators]
             value = scores[0] - scores[1]
@@ -69,7 +78,11 @@ def _average_precision_bounds(left, right, labels, size, total, examples):
                     if examples:
                         witnesses[direction] = {
                             "total_relevant": relevant,
-                            "unjudged_union_relevant": sorted(selected),
+                            "unjudged_union_relevant": [
+                                doc
+                                for index, doc in enumerate(unknown)
+                                if mask & (1 << index)
+                            ],
                             "unjudged_outside_union_relevant_count": relevant
                             - union_relevant,
                             "left_score": scores[0],
