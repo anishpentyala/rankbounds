@@ -1,0 +1,5 @@
+query_id,document_id,relevant
+a,x,1
+a,y,0
+b,x,0
+b,y,1
