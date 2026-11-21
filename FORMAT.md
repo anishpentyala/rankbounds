@@ -8,6 +8,7 @@ UTF-8 CSV, optional initial UTF-8 BOM; exact ordered headers:
 | ranking | `query_id,document_id,rank` | Unique document and rank per query |
 | judgments | `query_id,document_id,relevant` | Unique pair, binary 0/1 |
 | totals (optional) | `query_id,total_relevant` | Exactly one row per universe query |
+| query_weights (optional) | `query_id,weight` | Nonnegative integer counts, every query once, positive sum |
 | total_ranges (optional) | `query_id,min_relevant,max_relevant` | Inclusive bounds, exactly one row per universe query |
 
 All IDs are literal and case-sensitive. No trimming, normalization, inferred
@@ -188,3 +189,21 @@ recall, nDCG, RR and optional AP all use this same constraint. See
 Neither range input nor interval width changes `scoring_work_units`; no total
 counts or outside subsets are enumerated. Existing paired AP admission remains
 exponential in the unjudged top-k union, not interval width.
+
+
+## Optional fixed query-weighted aggregate
+
+`query_weights` / `--query-weights` adds `query_weighted`, never replaces
+`macro`. Its `total_weight` and `weights` counts use decimal strings;
+`metrics` has the ordinary floating-point lower/upper layout for every metric
+included by that mode. The input follows the same CSV/18-digit integer
+rules and per-file max_rows limit as other inputs, including zero padding.
+All queries must occur once and the nonnegative weights must have positive
+sum. Invalid weights are rejected before any query solver runs. Zero weight
+does not bypass parsing, scoring, constraints or work admission. Work units
+continue to describe the existing metric solver estimate, not all parsing
+or the extra linear aggregate/report work. The additional weights mapping
+uses O(Q) memory/output and aggregation uses O(Q*M) floating-point operations
+for Q queries and M included metrics. Existing input/report resource caveats
+and lack of certified outward rounding still apply. See [semantics and
+validation](QUERY_WEIGHTS.md).
