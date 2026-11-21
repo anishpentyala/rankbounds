@@ -80,6 +80,17 @@ def _metric_scores(hits, first, ap, dcg, ideal, total, k):
     }
 
 
+def _total_limits(total, known_rel, unknown_all):
+    """Intersect a caller count constraint with available binary completions."""
+    low, high = known_rel, known_rel + unknown_all
+    if total is not None:
+        a, b = total if isinstance(total, tuple) else (total, total)
+        low, high = max(low, a), min(high, b)
+        if low > high:
+            raise BoundsError("total relevant count contradicts judgments or universe")
+    return low, high
+
+
 def _query(ordered, judgments, universe_size, k, total, examples):
     top = ordered[:k]
     unknown = [i for i, doc in enumerate(top) if doc not in judgments]
@@ -87,8 +98,7 @@ def _query(ordered, judgments, universe_size, k, total, examples):
     known_rel = sum(judgments.values())
     unknown_all = universe_size - len(judgments)
     outside = unknown_all - len(unknown)
-    if total is not None and not known_rel <= total <= known_rel + unknown_all:
-        raise BoundsError("total relevant count contradicts judgments or universe")
+    total_low, total_high = _total_limits(total, known_rel, unknown_all)
     # Prefix fixed positives and suffix fixed reciprocal-rank contributions.
     prefix = [0]
     for bit in known:
@@ -160,10 +170,9 @@ def _query(ordered, judgments, universe_size, k, total, examples):
                     selected_suffix = state[2](1 / rank)
         low = known_rel + count
         high = low + outside
-        if total is not None:
-            if not low <= total <= high:
-                continue
-            low = high = total
+        low, high = max(low, total_low), min(high, total_high)
+        if low > high:
+            continue
         min_total = low if min_total is None else min(min_total, low)
         max_total = high if max_total is None else max(max_total, high)
         for direction, relevant_total in (("lower", high), ("upper", low)):
@@ -202,7 +211,7 @@ def _query(ordered, judgments, universe_size, k, total, examples):
                     bits[position] = 1
                 final_scores[key] = _score(bits, relevant_total, k)
             ends[metric][direction] = final_scores[key][metric]
-    baseline_valid = total is None or total == known_rel
+    baseline_valid = total_low <= known_rel <= total_high
     result = {
         "universe_documents": universe_size,
         "judged_documents": len(judgments),
@@ -262,7 +271,9 @@ def _load_ranking(ranking, inventory, max_rows):
     return ordered
 
 
-def _load_inputs(universe, ranking, judgments, totals, max_rows):
+def _load_inputs(universe, ranking, judgments, totals, max_rows, total_ranges=None):
+    if totals is not None and total_ranges is not None:
+        raise BoundsError("totals and total_ranges are mutually exclusive")
     inventory = {}
     for qid, doc in _rows(universe, ("query_id", "document_id"), max_rows):
         docs = inventory.setdefault(qid, set())
@@ -292,6 +303,30 @@ def _load_inputs(universe, ranking, judgments, totals, max_rows):
             counts[qid] = _integer(count_text, "total_relevant")
         if set(counts) != set(inventory):
             raise BoundsError("totals must cover every declared query exactly once")
+    if total_ranges is not None:
+        for qid, low_text, high_text in _rows(
+            total_ranges, ("query_id", "min_relevant", "max_relevant"), max_rows
+        ):
+            if qid not in inventory or qid in counts:
+                raise BoundsError("unknown or duplicate total-range query")
+            low = _integer(low_text, "min_relevant")
+            high = _integer(high_text, "max_relevant")
+            if not low <= high <= len(inventory[qid]):
+                raise BoundsError(
+                    "total range must be ordered within the query universe"
+                )
+            counts[qid] = (low, high)
+        if set(counts) != set(inventory):
+            raise BoundsError(
+                "total ranges must cover every declared query exactly once"
+            )
+    # Validate every query constraint before any metric solver is called.
+    for qid, constraint in counts.items():
+        _total_limits(
+            constraint,
+            sum(labels[qid].values()),
+            len(inventory[qid]) - len(labels[qid]),
+        )
     return inventory, ordered, labels, counts
 
 
@@ -302,6 +337,7 @@ def audit(
     *,
     k,
     totals=None,
+    total_ranges=None,
     examples=0,
     max_rows=1_000_000,
     max_work=5_000_000,
@@ -318,7 +354,7 @@ def audit(
     if type(examples) is not int or not 0 <= examples <= 20:
         raise BoundsError("examples must be an integer from 0 through 20")
     inventory, ordered, labels, counts = _load_inputs(
-        universe, ranking, judgments, totals, max_rows
+        universe, ranking, judgments, totals, max_rows, total_ranges
     )
     work = 0
     for qid in inventory:
@@ -354,4 +390,4 @@ def audit(
         "scoring_work_units": work,
         "macro": macro,
         "queries": queries,
-    }
+        }
