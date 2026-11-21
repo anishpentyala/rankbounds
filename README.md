@@ -261,3 +261,56 @@ constrain the whole finite universe, including unreturned and below-cutoff
 documents. Counts remain query-local: a shared cross-query relevance budget is
 not modeled. Row/work admission rules, floating-point limits and example-ID
 privacy rules are unchanged. [Count-range reasoning and checks](TOTAL_RANGES.md).
+
+
+## Add fixed query-traffic weights without changing macro
+
+An equal-query average gives a rare query and a frequent query the same
+importance. If you already have fixed traffic counts or another declared
+integer importance weight, pass `query_weights="weights.csv"` to `audit`
+or `compare`, or use `--query-weights weights.csv`. This adds a separate
+`query_weighted` aggregate; **the existing `macro` always stays equal-query**.
+
+```csv
+query_id,weight
+a,9
+b,1
+```
+
+```sh
+rankbounds --universe examples/weighted/universe.csv \
+  --ranking examples/weighted/left.csv --judgments examples/weighted/judgments.csv \
+  --k 1 --query-weights examples/weighted/weights.csv
+# precision macro is 0.5; query_weighted precision is 0.9
+```
+
+Adding `--comparison-ranking examples/weighted/right.csv` gives paired
+precision macro zero and weighted difference 0.8 in the same fully judged
+example. A positive difference favors the left ranking. The ordinary single
+and paired metric conventions still apply, including opt-in paired RR/AP.
+Weights are shared by both rankings, not chosen separately to favor either.
+
+The weight CSV must cover every universe query exactly once, with the exact
+header above. Weights are nonnegative ASCII integers of at most 18 digits;
+zero padding is accepted. The sum must be positive. Unknown, duplicate and
+missing queries fail before metric scoring. Zero-weight queries are **not
+omitted**: their inputs, count constraints, work admission, per-query reports,
+macro contribution and lexical example selection are all unchanged.
+
+`query_weighted` has `total_weight`, a lexical `weights` map, and `metrics` in
+the same endpoint layout as `macro`. Counts and their sum are decimal strings
+so large integers survive JSON consumers. For each metric and direction,
+the added endpoint is `sum(weight[q] * endpoint[q]) / sum(weight)`.
+Independent query completions allow the per-query extrema to be attained
+together. Different metrics/directions can still require different shared
+completions. Floating-point scoring, near-tie and lack of certified outward
+rounding remain unchanged. Even uniform weights need not reproduce macro
+bit-for-bit because the arithmetic ordering differs.
+
+This is a fixed-weight average of query-level metrics, **not micro-averaged
+precision/recall over documents**, a confidence interval, inferred traffic,
+robustness to changing query traffic, or a cross-query labeling constraint.
+The tool does not verify your weights. Weighting an incomplete finite
+universe does not make that universe complete. All query IDs were already
+reported; the opt-in additionally discloses their declared weights.
+Omitting the option leaves old reports unchanged. [Format, reasoning and checks](QUERY_WEIGHTS.md).
