@@ -1,5 +1,7 @@
 """Paired reciprocal-rank extrema by feasible first-relevant positions."""
 
+from .core import _total_limits
+
 
 def _reciprocal_bounds(left, right, labels, size, total, examples):
     """Runs are already truncated to k; every feasible first-hit pair is tried."""
@@ -8,6 +10,9 @@ def _reciprocal_bounds(left, right, labels, size, total, examples):
     known_negative = set(labels) - known_positive
     unknown_union = sorted(union - set(labels))
     unknown_outside = size - len(labels) - len(unknown_union)
+    total_low, total_high = _total_limits(
+        total, len(known_positive), size - len(labels)
+    )
     bounds = {"lower": None, "upper": None}
     choices = {}
     for i in range(len(left) + 1):
@@ -21,9 +26,10 @@ def _reciprocal_bounds(left, right, labels, size, total, examples):
             eligible = [doc for doc in unknown_union if doc not in zero | selected]
             low = len(known_positive) + len(selected)
             high = low + len(eligible) + unknown_outside
-            if total is not None and not low <= total <= high:
+            low_feasible, high_feasible = max(low, total_low), min(high, total_high)
+            if low_feasible > high_feasible:
                 continue
-            relevant = low if total is None else total
+            relevant = low_feasible
             scores = [
                 1 / (index + 1) if index < len(run) else 0.0
                 for index, run in ((i, left), (j, right))
