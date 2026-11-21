@@ -245,7 +245,7 @@ class JudgmentValueTests(Fixture):
         with self.assertRaisesRegex(BoundsError, "row limit"):
             self.analysis(max_rows=2)
 
-    def test_cli_single_only_and_invalid_no_json(self):
+    def test_cli_single_and_invalid_no_json(self):
         args = [
             "--universe",
             str(self.u),
@@ -261,9 +261,8 @@ class JudgmentValueTests(Fixture):
         with redirect_stdout(io.StringIO()) as output:
             self.assertEqual(main(args), 0)
         self.assertIn("judgment_value", json.loads(output.getvalue()))
+        self.write(self.c, ("query_id", "document_id"), [])
         for extra in (["--comparison-ranking", str(self.r)], []):
-            if not extra:
-                self.write(self.c, ("query_id", "document_id"), [])
             with (
                 redirect_stdout(io.StringIO()) as output,
                 redirect_stderr(io.StringIO()),
