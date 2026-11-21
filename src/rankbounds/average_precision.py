@@ -15,6 +15,25 @@ def _ap_numerator(run, positives):
     return math.fsum(terms)
 
 
+def _feasible_masks(width, lower, upper):
+    """Yield ascending masks whose popcount is in the inclusive count range."""
+    if lower == 0 and upper == width:
+        yield from range(1 << width)
+        return
+
+    def visit(bits, low, high, prefix):
+        if low > bits or high < 0:
+            return
+        if low <= 0 and high >= bits:
+            yield from range(prefix, prefix + (1 << bits))
+            return
+        # Highest remaining bit off before on preserves the old integer order.
+        yield from visit(bits - 1, low, high, prefix)
+        yield from visit(bits - 1, low - 1, high - 1, prefix | (1 << (bits - 1)))
+
+    yield from visit(width, lower, upper, 0)
+
+
 def _average_precision_bounds(left, right, labels, size, total, examples):
     """Only called after whole-audit exponential-work admission succeeds."""
     unknown = sorted((set(left) | set(right)) - set(labels))
@@ -23,7 +42,11 @@ def _average_precision_bounds(left, right, labels, size, total, examples):
     total_low, total_high = _total_limits(total, len(fixed), size - len(labels))
     bounds = {"lower": None, "upper": None}
     witnesses = {}
-    for mask in range(1 << len(unknown)):
+    # A union subset with c positives is feasible iff its total interval
+    # [known+c, known+c+outside] intersects the declared total interval.
+    count_low = max(0, total_low - len(fixed) - outside)
+    count_high = min(len(unknown), total_high - len(fixed))
+    for mask in _feasible_masks(len(unknown), count_low, count_high):
         selected = {doc for index, doc in enumerate(unknown) if mask & (1 << index)}
         low = len(fixed) + len(selected)
         high = low + outside
