@@ -7,6 +7,8 @@ from .core import (
     BoundsError,
     _load_inputs,
     _load_ranking,
+    _load_query_weights,
+    _weighted_report,
     _positive,
     _score,
     _total_limits,
@@ -145,6 +147,7 @@ def compare(
     k,
     totals=None,
     total_ranges=None,
+    query_weights=None,
     examples=0,
     max_rows=1_000_000,
     max_work=5_000_000,
@@ -155,6 +158,7 @@ def compare(
 
     Precision, recall and binary nDCG; optional reciprocal rank and budgeted AP.
     Every query, including empty runs, contributes equally to macro endpoints.
+    query_weights optionally adds a separate shared fixed-weight aggregate.
     """
     if type(include_rr) is not bool:
         raise BoundsError("include_rr must be a boolean")
@@ -173,6 +177,7 @@ def compare(
         universe, left_ranking, judgments, totals, max_rows, total_ranges
     )
     right = _load_ranking(right_ranking, inventory, max_rows)
+    weights = _load_query_weights(query_weights, inventory, max_rows)
     work = 0
     for qid in inventory:
         union = set(left[qid][:k]) | set(right[qid][:k])
@@ -208,7 +213,7 @@ def compare(
         }
         for index, qid in enumerate(sorted(inventory))
     ]
-    return {
+    report = {
         "schema_version": 1,
         "mode": "finite_binary_paired_compatibility",
         "difference": "left_minus_right",
@@ -225,3 +230,6 @@ def compare(
         },
         "queries": queries,
     }
+    if weights is not None:
+        report["query_weighted"] = _weighted_report(queries, weights, metrics)
+    return report
