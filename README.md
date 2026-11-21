@@ -319,3 +319,51 @@ The tool does not verify your weights. Weighting an incomplete finite
 universe does not make that universe complete. All query IDs were already
 reported; the opt-in additionally discloses their declared weights.
 Omitting the option leaves old reports unchanged. [Format, reasoning and checks](QUERY_WEIGHTS.md).
+
+
+## Which document could reduce an interval most?
+
+For a single ranking, pass `judgment_candidates="candidates.csv"` to `audit`,
+or `--judgment-candidates candidates.csv`. Its exact header is
+`query_id,document_id`; give 1 to 200 unique, currently unjudged pairs from
+the declared universe. No candidates are discovered automatically. Paired
+comparison mode is not supported for this option.
+
+```sh
+rankbounds --universe examples/judgment-value/universe.csv \
+  --ranking examples/judgment-value/ranking.csv \
+  --judgments examples/judgment-value/judgments.csv --k 3 \
+  --judgment-candidates examples/judgment-value/candidates.csv
+```
+
+The added `judgment_value` describes each candidate **independently**, not a
+sequence or a batch of acquired judgments. It reuses the original constraints
+and computes the remaining interval under hypothetical label 0 and label 1.
+Impossible labels are omitted, not treated as zero scores. For each query-level
+metric it reports the width before judging, width after each feasible label,
+**guaranteed reduction** (before minus the largest remaining width), and
+**best-case reduction** (before minus the smallest). It does not assign label
+probabilities, compute expected value, choose a metric, or claim a document is
+actually relevant.
+
+In the example, only document b is judged relevant; a, c and unreturned d
+are unjudged. Labeling first-ranked a guarantees about 0.33333 less precision
+width, but zero recall-width reduction in the worst case. Labeling unreturned
+d guarantees 0.25 less recall width and may remove all 0.5 of its width,
+while it cannot reduce precision width. The useful document depends on your
+metric and assumptions, not a universal priority score.
+
+Results concern the candidate's **own query**, not macro or query-weighted
+interval width, even when query weights are supplied. Existing query endpoints,
+macro and weighted results stay unchanged. `scoring_work_units` includes two
+additional original-query work estimates per candidate, even for a forced
+label; the full sum is checked before any scoring. The existing row cap applies
+to this CSV too. Each candidate can require two extra solver calls.
+
+This opt-in **discloses every requested query/document ID** in JSON, independent
+of `--examples`, and never writes labels or input files. Do not publish sensitive
+candidate IDs. Ordinary floating-point and near-tie caveats apply to the width
+differences; this is not certified outward rounding or a statistical value of
+information. Small negative reductions from roundoff are not clipped or treated
+as meaningful loss. Omitting the option leaves old reports unchanged.
+[Definitions, feasibility, cost and tests](JUDGMENT_VALUE.md).
