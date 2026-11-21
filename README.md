@@ -187,7 +187,7 @@ lengths. It can reject large cutoffs admitted by default mode; it is not intende
 as a fast large-k solver. The existing `max_work` limit covers both charges,
 checked for every query before any scoring. These are not hard time/RAM limits.
 No confidence, significance, winner, or outward-rounding guarantee is added.
-[Proof and checks](RECIPROCAL_VALIDATION.md).
+[Proof and checks](RECIPROCAL_VALIDATION.md). The current solver uses compact top-k-union masks instead of rebuilding prefix sets for each candidate. Report values, lexical witnesses and work-admission limits are unchanged. [Implementation, memory tradeoff and local timings](RR_MASKS.md).
 
 
 ### Optional paired AP with shared labels
