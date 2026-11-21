@@ -2,6 +2,9 @@
 
 import csv
 import math
+import os
+import stat
+from contextlib import contextmanager
 from pathlib import Path
 
 METRICS = ("precision", "recall", "rr", "ap_total", "ndcg")
@@ -27,10 +30,31 @@ def _integer(text, name, minimum=0):
     return value
 
 
+@contextmanager
+def _regular_input(path):
+    # Refuse known special files before open; check the actual descriptor too.
+    # O_NONBLOCK prevents a FIFO swapped in after stat from waiting on POSIX.
+    path = Path(path)
+    if not stat.S_ISREG(path.stat().st_mode):
+        raise BoundsError("CSV input must be a regular file")
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+    fd = os.open(path, flags)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise BoundsError("CSV input must be a regular file")
+        stream = os.fdopen(fd, encoding="utf-8-sig", newline="")
+        fd = None
+        with stream:
+            yield stream
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
 def _rows(path, columns, max_rows):
     # Names and error messages omit actual identifiers and filesystem paths.
     try:
-        with Path(path).open(encoding="utf-8-sig", newline="") as stream:
+        with _regular_input(path) as stream:
             reader = csv.reader(stream, strict=True)
             header = next(reader, None)
             if header != list(columns):
