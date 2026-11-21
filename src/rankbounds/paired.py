@@ -3,7 +3,14 @@
 import math
 
 from .average_precision import _average_precision_bounds
-from .core import BoundsError, _load_inputs, _load_ranking, _positive, _score
+from .core import (
+    BoundsError,
+    _load_inputs,
+    _load_ranking,
+    _positive,
+    _score,
+    _total_limits,
+)
 from .reciprocal import _reciprocal_bounds
 
 PAIRED_METRICS = ("precision", "recall", "ndcg")
@@ -18,8 +25,7 @@ def _paired_query(
     known_rel = sum(judgments.values())
     unknown_all = size - len(judgments)
     outside = unknown_all - len(unknown)
-    if total is not None and not known_rel <= total <= known_rel + unknown_all:
-        raise BoundsError("total relevant count contradicts judgments or universe")
+    total_low, total_high = _total_limits(total, known_rel, unknown_all)
     hit_weights = {doc: 0 for doc in union}
     dcg_parts = {doc: [] for doc in union}
     for sign, run in ((1, left), (-1, right)):
@@ -56,10 +62,9 @@ def _paired_query(
         for count in range(len(order) + 1):
             low = known_rel + count
             high = low + outside
-            if total is not None:
-                if not low <= total <= high:
-                    continue
-                low = high = total
+            low, high = max(low, total_low), min(high, total_high)
+            if low > high:
+                continue
             for direction in ("lower", "upper"):
                 numerator = prefixes[direction][count]
                 # For a signed difference, increasing the common denominator
@@ -121,8 +126,8 @@ def _paired_query(
         "top_union_documents": len(union),
         "unjudged_top_union_documents": len(unknown),
         "feasible_total_relevant": {
-            "lower": known_rel if total is None else total,
-            "upper": known_rel + unknown_all if total is None else total,
+            "lower": total_low,
+            "upper": total_high,
         },
         "metrics": ends,
     }
@@ -139,6 +144,7 @@ def compare(
     *,
     k,
     totals=None,
+    total_ranges=None,
     examples=0,
     max_rows=1_000_000,
     max_work=5_000_000,
@@ -164,7 +170,7 @@ def compare(
     if type(examples) is not int or not 0 <= examples <= 20:
         raise BoundsError("examples must be an integer from 0 through 20")
     inventory, left, labels, counts = _load_inputs(
-        universe, left_ranking, judgments, totals, max_rows
+        universe, left_ranking, judgments, totals, max_rows, total_ranges
     )
     right = _load_ranking(right_ranking, inventory, max_rows)
     work = 0
