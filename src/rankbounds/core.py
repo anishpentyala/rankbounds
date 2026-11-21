@@ -387,6 +387,73 @@ def _weighted_report(queries, weights, metrics):
     }
 
 
+def _load_judgment_candidates(path, inventory, labels, max_rows):
+    if path is None:
+        return None
+    candidates = set()
+    for qid, doc in _rows(path, ("query_id", "document_id"), max_rows):
+        if qid not in inventory or doc not in inventory[qid]:
+            raise BoundsError("judgment candidate is outside declared query universe")
+        if doc in labels[qid]:
+            raise BoundsError("judgment candidate is already judged")
+        if (qid, doc) in candidates:
+            raise BoundsError("duplicate judgment candidate")
+        candidates.add((qid, doc))
+        if len(candidates) > 200:
+            raise BoundsError("judgment candidates must have at most 200 rows")
+    if not candidates:
+        raise BoundsError("judgment candidates must have at least one row")
+    return sorted(candidates)
+
+
+def _judgment_value_report(candidates, inventory, ordered, labels, counts, k, queries):
+    before = {q["query_id"]: q["metrics"] for q in queries}
+    results = []
+    for qid, doc in candidates:
+        outcomes = {}
+        for relevant in (0, 1):
+            hypothetical = dict(labels[qid])
+            hypothetical[doc] = relevant
+            try:
+                _total_limits(
+                    counts.get(qid),
+                    sum(hypothetical.values()),
+                    len(inventory[qid]) - len(hypothetical),
+                )
+            except BoundsError:
+                continue
+            outcomes[str(relevant)] = _query(
+                ordered[qid],
+                hypothetical,
+                len(inventory[qid]),
+                k,
+                counts.get(qid),
+                False,
+            )["metrics"]
+        metrics = {}
+        for metric in METRICS:
+            width = before[qid][metric]["upper"] - before[qid][metric]["lower"]
+            remaining = {
+                label: ends[metric]["upper"] - ends[metric]["lower"]
+                for label, ends in outcomes.items()
+            }
+            metrics[metric] = {
+                "before_width": width,
+                "after_width_by_label": remaining,
+                "guaranteed_reduction": width - max(remaining.values()),
+                "best_case_reduction": width - min(remaining.values()),
+            }
+        results.append(
+            {
+                "query_id": qid,
+                "document_id": doc,
+                "outcomes": outcomes,
+                "metrics": metrics,
+            }
+        )
+    return {"scope": "single_query_interval_width", "candidates": results}
+
+
 def audit(
     universe,
     ranking,
@@ -396,6 +463,7 @@ def audit(
     totals=None,
     total_ranges=None,
     query_weights=None,
+    judgment_candidates=None,
     examples=0,
     max_rows=1_000_000,
     max_work=5_000_000,
@@ -407,6 +475,8 @@ def audit(
     Neither is a hard RAM or wall-time bound. IDs stay literal, case-sensitive.
     examples is the number of lexical query IDs whose endpoint examples to emit.
     query_weights adds a separate fixed-weight aggregate; macro is unchanged.
+    judgment_candidates adds single-query hypothetical values; each candidate
+    charges two extra original-query work estimates before any scoring.
     """
     for value, name in ((k, "k"), (max_rows, "max_rows"), (max_work, "max_work")):
         _positive(value, name)
@@ -416,13 +486,25 @@ def audit(
         universe, ranking, judgments, totals, max_rows, total_ranges
     )
     weights = _load_query_weights(query_weights, inventory, max_rows)
+    candidates = _load_judgment_candidates(
+        judgment_candidates, inventory, labels, max_rows
+    )
     work = 0
+    query_work = {}
     for qid in inventory:
         top = ordered[qid][:k]
         unjudged = sum(doc not in labels[qid] for doc in top)
-        work += (unjudged + 1) * (len(top) + min(k, len(inventory[qid])) + 1)
+        unit = (unjudged + 1) * (len(top) + min(k, len(inventory[qid])) + 1)
+        if candidates is not None:
+            query_work[qid] = unit
+        work += unit
         if work > max_work:
             raise BoundsError("scoring work limit exceeded")
+    if candidates is not None:
+        for qid, _ in candidates:
+            work += 2 * query_work[qid]
+            if work > max_work:
+                raise BoundsError("scoring work limit exceeded")
     queries = []
     for index, qid in enumerate(sorted(inventory)):
         row = _query(
@@ -453,4 +535,8 @@ def audit(
     }
     if weights is not None:
         report["query_weighted"] = _weighted_report(queries, weights, METRICS)
+    if candidates is not None:
+        report["judgment_value"] = _judgment_value_report(
+            candidates, inventory, ordered, labels, counts, k, queries
+        )
     return report
