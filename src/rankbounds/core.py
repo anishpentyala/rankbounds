@@ -330,6 +330,39 @@ def _load_inputs(universe, ranking, judgments, totals, max_rows, total_ranges=No
     return inventory, ordered, labels, counts
 
 
+def _load_query_weights(path, inventory, max_rows):
+    if path is None:
+        return None
+    weights = {}
+    for qid, text in _rows(path, ("query_id", "weight"), max_rows):
+        if qid not in inventory or qid in weights:
+            raise BoundsError("unknown or duplicate weight query")
+        weights[qid] = _integer(text, "query weight")
+    if set(weights) != set(inventory):
+        raise BoundsError("query weights must cover every declared query exactly once")
+    if not any(weights.values()):
+        raise BoundsError("query weights must have a positive total")
+    return weights
+
+
+def _weighted_report(queries, weights, metrics):
+    total = sum(weights.values())
+    return {
+        "total_weight": str(total),
+        "weights": {q["query_id"]: str(weights[q["query_id"]]) for q in queries},
+        "metrics": {
+            metric: {
+                direction: math.fsum(
+                    q["metrics"][metric][direction] * (weights[q["query_id"]] / total)
+                    for q in queries
+                )
+                for direction in ("lower", "upper")
+            }
+            for metric in metrics
+        },
+    }
+
+
 def audit(
     universe,
     ranking,
@@ -338,6 +371,7 @@ def audit(
     k,
     totals=None,
     total_ranges=None,
+    query_weights=None,
     examples=0,
     max_rows=1_000_000,
     max_work=5_000_000,
@@ -348,6 +382,7 @@ def audit(
     (unjudged_top+1)*(top_length+min(k,universe_length)+1), before scoring.
     Neither is a hard RAM or wall-time bound. IDs stay literal, case-sensitive.
     examples is the number of lexical query IDs whose endpoint examples to emit.
+    query_weights adds a separate fixed-weight aggregate; macro is unchanged.
     """
     for value, name in ((k, "k"), (max_rows, "max_rows"), (max_work, "max_work")):
         _positive(value, name)
@@ -356,6 +391,7 @@ def audit(
     inventory, ordered, labels, counts = _load_inputs(
         universe, ranking, judgments, totals, max_rows, total_ranges
     )
+    weights = _load_query_weights(query_weights, inventory, max_rows)
     work = 0
     for qid in inventory:
         top = ordered[qid][:k]
@@ -382,7 +418,7 @@ def audit(
         }
         for metric in METRICS
     }
-    return {
+    report = {
         "schema_version": 1,
         "mode": "finite_binary_compatibility",
         "k": k,
@@ -391,3 +427,6 @@ def audit(
         "macro": macro,
         "queries": queries,
     }
+    if weights is not None:
+        report["query_weighted"] = _weighted_report(queries, weights, METRICS)
+    return report
