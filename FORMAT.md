@@ -128,8 +128,9 @@ without a relevant returned document at or before k.
 
 Add `(L+1)*(R+1)*(L+R+1)` units per query to the existing paired charge. Work is
 checked across the whole query set before calling either scoring solver. The
-charge conservatively models first-position pair enumeration and prefix/union
-set work, not exact CPU operations or a hard resource bound. Endpoint witnesses
+charge is retained as a conservative compatibility admission rule; the current
+solver uses integer masks and deferred witness expansion instead of per-pair
+prefix sets. It is not exact CPU work or a hard resource bound. Endpoint witnesses
 use the existing shared-completion layout and disclosure rules.
 
 
