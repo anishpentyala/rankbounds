@@ -213,3 +213,43 @@ paired output and work units are unchanged without the opt-in. It combines with
 `--paired-rr`. This is an addition to an existing tool, not a new retrieval metric
 or claim of a new optimization method. Ordinary floating-point and witness
 privacy limits still apply. [AP format and cost](FORMAT.md#opt-in-paired-ap).
+
+
+## Declared ranges for total relevant counts
+
+An exact count is not required when you can only declare a lower and upper bound
+on the number of relevant documents in each finite query universe. Supply a
+separate CSV with the exact header `query_id,min_relevant,max_relevant`, one row
+per query:
+
+```csv
+query_id,min_relevant,max_relevant
+q1,20,35
+q2,0,8
+```
+
+```sh
+rankbounds --universe universe.csv --ranking ranking.csv \
+  --judgments judgments.csv --total-ranges ranges.csv --k 10
+```
+
+Both APIs accept `total_ranges="ranges.csv"`. It also works with
+`--comparison-ranking`, `--paired-rr` and `--paired-ap`. Use either `totals` or
+`total_ranges`, never both. Existing exact-total CSVs and default reports remain
+supported without changes. A singleton range is equivalent to an exact total;
+a full `0..universe_size` range adds no information.
+
+Bounds are inclusive, nonnegative integers, ordered and at most the query's
+universe size. Each range is intersected with what the known judgments permit.
+An empty intersection is an input error, not an omitted query. For example, a
+range of 2..5 with three known positives admits 3..5, provided enough unjudged
+documents exist. Effective bounds appear in `feasible_total_relevant` and every
+endpoint example obeys them. The all-unjudged-negative convention is compatible
+only when the known-positive count lies in the declared range.
+
+These are caller-declared constraints, not estimated counts or a confidence
+interval. The tool does not verify that a real collection satisfies them. They
+constrain the whole finite universe, including unreturned and below-cutoff
+documents. Counts remain query-local: a shared cross-query relevance budget is
+not modeled. Row/work admission rules, floating-point limits and example-ID
+privacy rules are unchanged. [Count-range reasoning and checks](TOTAL_RANGES.md).
