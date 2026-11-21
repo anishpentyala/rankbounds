@@ -222,3 +222,33 @@ No hard I/O deadline or immutable snapshot is provided: regular files can
 change during a read, and network, pseudo or other filesystems may still
 block. CSV syntax, row/work admission, output and score semantics are
 unchanged for accepted inputs. [Implementation and validation](REGULAR_INPUT.md).
+
+
+## Optional single-run judgment-value report
+
+`audit(..., judgment_candidates=...)` / `--judgment-candidates` accepts strict
+regular-file CSV with exact header `query_id,document_id`, 1 to 200 unique
+currently unjudged universe pairs, literal IDs, standard BOM/UTF-8 handling
+and the same per-file max_rows. Invalid candidates fail before any solver.
+The CLI rejects combining it with `--comparison-ranking`; `compare` does
+not expose this API parameter.
+
+The added `judgment_value` has scope `single_query_interval_width` and a
+lexical query/document `candidates` list. Each entry has both IDs, `outcomes`
+(label string to all five metric endpoint pairs, only feasible labels) and
+`metrics` (before_width, after_width_by_label, guaranteed_reduction,
+best_case_reduction for each metric). Every entry considers one hypothetical
+judgment against the same original labels, not prior entries' hypotheticals.
+No extra endpoint examples or actual relevance recommendation is emitted.
+
+For original per-query work estimate W_q, total scoring_work_units becomes
+sum(W_q) + 2*sum(W_q for each candidate's query). Infeasible outcomes do not
+reduce this conservative reservation. All admission happens before any
+original or hypothetical score calculation. The formula is still a solver
+estimate, not a parser, label-copying, report, total-RAM or time bound.
+With C<=200 candidates and M=5 metrics, extra solver calls are at most 2C,
+extra output O(C*M), and temporary label copies can use O(L_q) space and work
+per call. No automatic document search, cost model, query-weighted importance,
+expected utility or paired analysis is implied. IDs are always disclosed in
+this opt-in even when examples=0. Floating-point width subtraction may produce
+small negative reductions; values are not clipped. [Full contract](JUDGMENT_VALUE.md).
