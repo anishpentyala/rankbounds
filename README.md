@@ -216,7 +216,11 @@ moderate top-k unions. Nothing is sampled or silently dropped to fit. Default
 paired output and work units are unchanged without the opt-in. It combines with
 `--paired-rr`. This is an addition to an existing tool, not a new retrieval metric
 or claim of a new optimization method. Ordinary floating-point and witness
-privacy limits still apply. [AP format and cost](FORMAT.md#opt-in-paired-ap).
+privacy limits still apply. [AP format and cost](FORMAT.md#opt-in-paired-ap). The remaining subset scoring
+uses precomputed integer rank tags and constructs string witnesses only when
+an endpoint changes. Values, witness tie choices and admission limits stay
+unchanged. Broad searches can benefit; already-pruned one-subset searches can
+incur a few microseconds of tag setup. [Compatibility and local timings](AP_BITS.md).
 
 
 ## Declared ranges for total relevant counts
