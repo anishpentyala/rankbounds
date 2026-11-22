@@ -11,7 +11,7 @@ license = "MIT"
 readme = "README.md"
 
 [project.scripts]
-rankbounds = "rankbounds.__main__:main"
+rankbounds = "rankbounds.__main__:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
