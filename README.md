@@ -38,7 +38,12 @@ I/O timeout or a file-content snapshot. [File-read guarantees and limits](REGULA
 
 Success writes one JSON document to stdout, exit 0.
 Invalid/contradictory/over-budget input writes an error to stderr and no JSON,
-exit 2. There is no pass/fail quality threshold or claim that your ranking is
+exit 2. Output errors also exit 2: a report is successful only after a complete
+write and an explicit flush. Diagnostics are best effort if stderr is unavailable.
+A failed output can leave partial JSON, so discard stdout on any nonzero exit.
+A successful flush does not prove that a downstream consumer parsed or saved the
+report. See [CLI output handling](CLI_OUTPUT.md) for embedding and process details.
+There is no pass/fail quality threshold or claim that your ranking is
 safe to deploy. JSON always includes query IDs and counts. `--examples 1..20`
 also discloses selected unjudged document IDs; default 0 omits those examples.
 Do not publish reports with sensitive identifiers.
